@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TailAdmin — Calendario Mensual</title>
+  </head>
+  <body class="bg-gray-50 text-slate-800">
+    <div id="app" class="min-h-screen flex">
+      <!-- Sidebar -->
+      <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transform bg-white border-r border-slate-200 p-4 transition-transform">
+        <div class="flex items-center justify-between mb-6">
+          <a href="/dashboard.html" class="text-xl font-semibold tracking-tight brand-text">Tailadmin</a>
+          <div class="flex items-center gap-1">
+            <button id="sidebarCollapse" class="hidden lg:inline-flex p-2 rounded hover:bg-slate-100" aria-label="Colapsar barra" title="Colapsar / Expandir">
+              <svg data-dir="left" class="collapse-icon size-5" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m15.75 19.5-7.5-7.5 7.5-7.5"/></svg>
+              <svg data-dir="right" class="collapse-icon size-5" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+            </button>
+            <button id="sidebarClose" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Cerrar menú">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18 18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <nav class="space-y-1 text-sm" aria-label="Navegación principal">
+          <a href="/dashboard.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Dashboard">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0 7-7 7 7m-9 9V9.5"/></svg>
+            <span class="label">Dashboard</span>
+          </a>
+          <a href="#" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Usuarios">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
+            <span class="label">Usuarios</span>
+          </a>
+          <a href="/calendario.html" class="flex items-center gap-2 rounded-md px-3 py-2 font-medium text-slate-700 bg-slate-100" title="Calendario">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008Z"/></svg>
+            <span class="label">Calendario</span>
+          </a>
+          <a href="/ajustes.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Ajustes">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.5 12a7.5 7.5 0 0 1 13.007-4.5H21v3h-2.02c.013.167.02.334.02.5s-.007.333-.02.5H21v3h-3.493A7.5 7.5 0 0 1 4.5 12Z"/></svg>
+            <span class="label">Ajustes</span>
+          </a>
+        </nav>
+      </aside>
+
+      <!-- Overlay for mobile -->
+      <div id="overlay" class="fixed inset-0 z-30 bg-slate-900/30 backdrop-blur-sm lg:hidden hidden"></div>
+
+      <!-- Main content -->
+  <div class="flex-1 main-wrapper lg:ml-64">
+        <header class="sticky top-0 z-30 bg-white border-b border-slate-200">
+          <div class="flex items-center gap-2 p-4">
+            <button id="sidebarOpen" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Abrir menú">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+            </button>
+            <h1 class="text-lg font-semibold">Calendario mensual</h1>
+            <div class="ml-auto flex items-center gap-3">
+              <div class="hidden sm:block">
+                <input type="text" placeholder="Buscar..." class="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              </div>
+              <button class="p-2 rounded-full border border-slate-300">
+                <span class="sr-only">Perfil</span>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main class="p-6">
+    <section class="flex flex-col lg:flex-row gap-6 items-start">
+      <!-- Calendario (2/3) -->
+      <div class="rounded-lg border border-slate-200 bg-white p-4 lg:w-2/3">
+                <h2 class="font-semibold">Vista mensual</h2>
+                <!-- Añadimos week-like para reutilizar distribución del estilo semanal -->
+                <div id="month-calendar" class="mt-4 calendar-compact week-like"></div>
+            </div>
+            <!-- Formulario (1/3) -->
+            <div id="event-form-panel" class="rounded-lg border border-slate-200 bg-white p-4 lg:w-1/3 self-start">
+              <h2 id="event-form-title" class="font-semibold">Nuevo evento</h2>
+              <form class="mt-4 space-y-4" aria-label="Formulario crear evento (visual)">
+                <div class="grid gap-1">
+                  <label for="evt-nombre" class="text-sm font-medium">Nombre del evento</label>
+                  <input id="evt-nombre" type="text" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Ej: Consulta inicial" />
+                </div>
+                <div class="grid gap-1">
+                  <label for="evt-fecha" class="text-sm font-medium">Fecha</label>
+                  <div class="relative date-picker-wrapper" data-date-wrapper>
+                    <input id="evt-fecha" type="date" class="has-custom-icon rounded-md border border-slate-300 pl-3 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 w-full" />
+                    <span aria-hidden="true" class="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-500 pointer-events-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008Z"/></svg>
+                    </span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <!-- Timepicker inicio -->
+                  <div class="grid gap-1 min-w-0">
+                    <label for="evt-inicio" class="text-sm font-medium">Hora de inicio</label>
+                    <div class="relative">
+                      <input id="evt-inicio" type="hidden" value="09:00" />
+                      <button type="button" data-time-display="evt-inicio" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 flex items-center justify-between bg-white">
+                        <span class="time-value font-mono">09:00</span>
+                        <svg class="size-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="1.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 7v5l3 2"/></svg>
+                      </button>
+                      <div data-time-popover="evt-inicio" class="time-popover hidden absolute z-50 mt-1 w-full rounded-md border border-slate-300 bg-white p-2 shadow-lg">
+                        <div class="flex">
+                          <ul class="time-hours w-1/2 max-h-48 overflow-y-auto pr-2 border-r border-slate-200 space-y-0.5 text-xs"></ul>
+                          <ul class="time-minutes w-1/2 max-h-48 overflow-y-auto pl-2 space-y-0.5 text-xs">
+                            <li data-minute="00" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">00</li>
+                            <li data-minute="15" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">15</li>
+                            <li data-minute="30" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">30</li>
+                            <li data-minute="45" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">45</li>
+                          </ul>
+                        </div>
+                        <div class="mt-2 flex justify-end gap-2">
+                          <button type="button" data-action="close" class="rounded-md px-2 py-1 text-xs border border-slate-300 hover:bg-slate-100">Cerrar</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Timepicker fin -->
+                  <div class="grid gap-1 min-w-0">
+                    <label for="evt-fin" class="text-sm font-medium">Hora de fin</label>
+                    <div class="relative">
+                      <input id="evt-fin" type="hidden" value="10:00" />
+                      <button type="button" data-time-display="evt-fin" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 flex items-center justify-between bg-white">
+                        <span class="time-value font-mono">10:00</span>
+                        <svg class="size-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="1.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 7v5l3 2"/></svg>
+                      </button>
+                      <div data-time-popover="evt-fin" class="time-popover hidden absolute z-50 mt-1 w-full rounded-md border border-slate-300 bg-white p-2 shadow-lg">
+                        <div class="flex">
+                          <ul class="time-hours w-1/2 max-h-48 overflow-y-auto pr-2 border-r border-slate-200 space-y-0.5 text-xs"></ul>
+                          <ul class="time-minutes w-1/2 max-h-48 overflow-y-auto pl-2 space-y-0.5 text-xs">
+                            <li data-minute="00" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">00</li>
+                            <li data-minute="15" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">15</li>
+                            <li data-minute="30" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">30</li>
+                            <li data-minute="45" class="cursor-pointer rounded px-2 py-1 hover:bg-slate-100">45</li>
+                          </ul>
+                        </div>
+                        <div class="mt-2 flex justify-end gap-2">
+                          <button type="button" data-action="close" class="rounded-md px-2 py-1 text-xs border border-slate-300 hover:bg-slate-100">Cerrar</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div class="grid gap-1 min-w-0">
+                    <label for="evt-precio-total" class="text-sm font-medium">Precio total (€)</label>
+                    <input id="evt-precio-total" type="number" step="0.01" min="0" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="0.00" />
+                  </div>
+                  <div class="grid gap-1 min-w-0">
+                    <label for="evt-precio-pagado" class="text-sm font-medium">Precio pagado (€)</label>
+                    <input id="evt-precio-pagado" type="number" step="0.01" min="0" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="0.00" />
+                  </div>
+                </div>
+                <div class="grid gap-1">
+                  <label for="evt-notas" class="text-sm font-medium">Notas</label>
+                  <textarea id="evt-notas" rows="4" class="resize-y rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Observaciones..." ></textarea>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                  <input id="evt-diseno-terminado" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+                  <label for="evt-diseno-terminado" class="text-sm font-medium select-none">Diseño terminado</label>
+                </div>
+                <div>
+                  <div class="flex gap-2 form-actions">
+                    <button id="evt-save" type="button" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800">Guardar</button>
+                    <button id="evt-reset" type="button" class="inline-flex items-center gap-2 rounded-md border border-slate-300 text-slate-700 px-4 py-2 text-sm hover:bg-slate-100">Limpiar</button>
+                    <button id="evt-delete" type="button" class="hidden ml-auto inline-flex items-center gap-2 rounded-md border border-red-300 text-red-700 px-4 py-2 text-sm hover:bg-red-50" title="Eliminar evento seleccionado">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.74 9l-.346 9m-4.788 0L9.26 9M9.75 4.5h4.5m-8.25 2.25h12M5.25 6.75 6 19.125A2.25 2.25 0 0 0 8.243 21h7.514A2.25 2.25 0 0 0 18 19.125L18.75 6.75"/></svg>
+                      <span>Eliminar</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="/src/month.js"></script>
+    <script>
+      (function(){
+        // Hacer que toda la barra de fecha sea táctil (wrapper clicable)
+        const dateInput = document.getElementById('evt-fecha');
+        const dateWrapper = document.querySelector('[data-date-wrapper]');
+        if(dateInput && dateWrapper){
+          dateWrapper.addEventListener('click', (e)=>{
+            // Evitar doble apertura si el click es directamente en el input (nativo ya abre)
+            if(e.target !== dateInput){
+              if(typeof dateInput.showPicker === 'function'){
+                try { dateInput.showPicker(); return; } catch {}
+              }
+              dateInput.focus();
+              try { dateInput.click(); } catch {}
+            }
+          }, { passive:true });
+        }
+        const ACTIVE = 'bg-slate-900 text-white';
+        function buildHours(list){
+          if(list.children.length) return;
+          for(let h=0; h<24; h++){
+            const li=document.createElement('li');
+            const v=String(h).padStart(2,'0');
+            li.textContent=v; li.dataset.hour=v;
+            li.className='cursor-pointer rounded px-2 py-1 hover:bg-slate-100';
+            list.appendChild(li);
+          }
+        }
+        function positionPopover(id){
+          const btn = document.querySelector(`[data-time-display="${id}"]`);
+          const pop = document.querySelector(`[data-time-popover="${id}"]`);
+          if(!btn || !pop) return;
+          const container = btn.parentElement; // wrapper relativo
+          const targetWidth = container ? container.offsetWidth : btn.offsetWidth;
+          // Igualar ancho visual
+          pop.style.width = targetWidth + 'px';
+          pop.style.minWidth = targetWidth + 'px';
+          // Posicionar justo debajo del botón
+          pop.style.top = btn.offsetHeight + 'px';
+          pop.style.left = '0px';
+        }
+        function openPopover(id){
+          closeAll();
+          const pop=document.querySelector(`[data-time-popover="${id}"]`);
+          if(pop){ pop.classList.remove('hidden'); markActive(id); positionPopover(id); }
+        }
+        function closeAll(){ document.querySelectorAll('.time-popover').forEach(p=>p.classList.add('hidden')); }
+        function markActive(id){
+          const hidden=document.getElementById(id); if(!hidden) return;
+            const [h,m]=hidden.value.split(':');
+            const pop=document.querySelector(`[data-time-popover="${id}"]`);
+            if(!pop) return;
+            pop.querySelectorAll('.time-hours [data-hour]').forEach(li=> li.classList.toggle(ACTIVE, li.dataset.hour===h));
+            pop.querySelectorAll('.time-minutes [data-minute]').forEach(li=> li.classList.toggle(ACTIVE, li.dataset.minute===m));
+        }
+        function setTime(id,hour,minute,doClose){
+          const hidden=document.getElementById(id); if(!hidden) return;
+          hidden.value=`${hour}:${minute}`;
+          const label=document.querySelector(`[data-time-display="${id}"] .time-value`);
+          if(label) label.textContent=hidden.value;
+          markActive(id);
+          if(doClose) closeAll();
+        }
+        document.querySelectorAll('.time-hours').forEach(buildHours);
+        document.querySelectorAll('[data-time-display]').forEach(btn=>{
+          btn.addEventListener('click',e=>{ e.stopPropagation(); openPopover(btn.getAttribute('data-time-display')); });
+        });
+        document.addEventListener('click',e=>{
+          const hourEl=e.target.closest('.time-hours [data-hour]');
+          const minEl=e.target.closest('.time-minutes [data-minute]');
+          if(hourEl){
+            const pop=hourEl.closest('[data-time-popover]'); const id=pop.getAttribute('data-time-popover');
+            const hidden=document.getElementById(id); const [,m]=hidden.value.split(':');
+            setTime(id,hourEl.dataset.hour,m,false);
+            positionPopover(id);
+          }
+          if(minEl){
+            const pop=minEl.closest('[data-time-popover]'); const id=pop.getAttribute('data-time-popover');
+            const hidden=document.getElementById(id); const [h]=hidden.value.split(':');
+            setTime(id,h,minEl.dataset.minute,true);
+          }
+          if(e.target.matches('[data-action="close"]')) closeAll();
+        });
+        document.addEventListener('click', e=>{ if(!e.target.closest('.time-popover') && !e.target.closest('[data-time-display]')) closeAll(); });
+        ['evt-inicio','evt-fin'].forEach(markActive);
+        // Recalcular tamaño/posición en scroll y resize
+        function syncOpen(){ document.querySelectorAll('.time-popover:not(.hidden)').forEach(p=>{ positionPopover(p.getAttribute('data-time-popover')); }); }
+        window.addEventListener('resize', syncOpen);
+        window.addEventListener('scroll', syncOpen, true);
+      })();
+    </script>
+  </body>
+</html>

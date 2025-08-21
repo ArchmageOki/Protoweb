@@ -2,12 +2,22 @@ import './style.css'
 import { Calendar } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import esLocale from '@fullcalendar/core/locales/es'
+import { ensureHolidayYears, isHoliday, ymd, getSampleEvents } from './calendar-utils'
 
-// Toggle sidebar en móvil
+// Toggle sidebar móvil + colapso escritorio
 const sidebar = document.getElementById('sidebar')
 const overlay = document.getElementById('overlay')
 const openBtn = document.getElementById('sidebarOpen')
 const closeBtn = document.getElementById('sidebarClose')
+const collapseBtn = document.getElementById('sidebarCollapse')
+const BODY = document.body
+const STORAGE_KEY_UI = 'app.ui'
+
+// Restaurar estado colapsado
+try {
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_UI) || '{}')
+  if (saved.sidebarCollapsed) BODY.classList.add('sidebar-collapsed')
+} catch {}
 
 function openSidebar() {
   sidebar.classList.remove('-translate-x-full')
@@ -23,6 +33,16 @@ openBtn?.addEventListener('click', openSidebar)
 closeBtn?.addEventListener('click', closeSidebar)
 overlay?.addEventListener('click', closeSidebar)
 
+// Colapso en escritorio
+collapseBtn?.addEventListener('click', () => {
+  BODY.classList.toggle('sidebar-collapsed')
+  try {
+    const prev = JSON.parse(localStorage.getItem(STORAGE_KEY_UI) || '{}')
+    const next = { ...prev, sidebarCollapsed: BODY.classList.contains('sidebar-collapsed') }
+    localStorage.setItem(STORAGE_KEY_UI, JSON.stringify(next))
+  } catch {}
+})
+
 // Inicializar calendario si existe el contenedor en la página actual
 const calendarEl = document.getElementById('calendar')
 if (calendarEl) {
@@ -30,34 +50,7 @@ if (calendarEl) {
   const hm = (h, m) => ({ h, m })
   const makeDate = (y, m, d, hm) => new Date(y, m, d, hm.h, hm.m)
 
-  // Festivos automáticos vía Nager.Date según comunidad autónoma (CCAA)
-  // Se lee de localStorage (app.settings.ccaa); por defecto ES-NC (Navarra)
-  const APP_SETTINGS_KEY = 'app.settings'
-  const DEFAULT_CCAA = 'ES-NC'
-  const getAppSettings = () => {
-    try { return JSON.parse(localStorage.getItem(APP_SETTINGS_KEY)) || {} } catch { return {} }
-  }
-  const appSettings = getAppSettings()
-  const CCAA_CODE = appSettings.ccaa || DEFAULT_CCAA
-  const holidaysSet = new Set() // YYYY-MM-DD
-  const loadedYears = new Set()
-  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  async function loadHolidaysForYear(year) {
-    if (loadedYears.has(year)) return
-    try {
-      const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/ES`)
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const data = await res.json()
-      for (const h of data) {
-        const isNational = !h.counties || h.counties.length === 0
-        const isCCAA = Array.isArray(h.counties) && h.counties.includes(CCAA_CODE)
-        if (isNational || isCCAA) holidaysSet.add(h.date)
-      }
-      loadedYears.add(year)
-    } catch (e) {
-      console.error('Error cargando festivos', year, e)
-    }
-  }
+  // Festivos movidos a utilidades compartidas
   // No necesitamos recorrer el DOM: FullCalendar permite devolver clases por fecha
 
   // Fechas objetivo segun solicitud (días del mes actual)
@@ -65,25 +58,7 @@ if (calendarEl) {
   const Y = now.getFullYear()
   const M = now.getMonth()
 
-  const events = [
-    // Semana actual
-    { d: 19, title: 'Cita 1', from: hm(9, 0), to: hm(9, 45) },
-    { d: 20, title: 'Cita A', from: hm(9, 0), to: hm(9, 30) },
-    { d: 20, title: 'Cita B', from: hm(10, 0), to: hm(10, 45) },
-    { d: 20, title: 'Cita C', from: hm(12, 0), to: hm(13, 0) },
-    { d: 20, title: 'Cita D', from: hm(16, 0), to: hm(16, 30) },
-    { d: 21, title: 'Cita 1', from: hm(11, 0), to: hm(11, 30) },
-    { d: 21, title: 'Cita 2', from: hm(15, 0), to: hm(16, 0) },
-    { d: 22, title: 'Cita única', from: hm(8, 30), to: hm(9, 15) },
-    // Semana siguiente
-    { d: 25, title: 'Cita próxima', from: hm(10, 30), to: hm(11, 15) },
-    { d: 27, title: 'Cita 1', from: hm(9, 0), to: hm(9, 30) },
-    { d: 27, title: 'Cita 2', from: hm(12, 30), to: hm(13, 15) },
-  ].map(e => ({
-    title: e.title,
-    start: makeDate(Y, M, e.d, e.from),
-    end: makeDate(Y, M, e.d, e.to),
-  }))
+  const events = getSampleEvents(Y, M)
 
   const calendar = new Calendar(calendarEl, {
     plugins: [dayGridPlugin],
@@ -98,13 +73,8 @@ if (calendarEl) {
       right: 'next'
     },
     // Añadir clase a celdas del grid si es festivo
-    dayCellClassNames(info) {
-      return holidaysSet.has(ymd(info.date)) ? ['is-holiday'] : []
-    },
-    // Añadir clase a cabeceras (vie 15/08) si es festivo
-    dayHeaderClassNames(info) {
-      return holidaysSet.has(ymd(info.date)) ? ['is-holiday'] : []
-    },
+  dayCellClassNames(info) { return isHoliday(info.date) ? ['is-holiday'] : [] },
+  dayHeaderClassNames(info) { return isHoliday(info.date) ? ['is-holiday'] : [] },
     async datesSet(info) {
       // Actualizar título personalizado: "Mes semana X" según regla de 4+ días
       const start = new Date(info.start)
@@ -156,12 +126,8 @@ if (calendarEl) {
       if (titleEl) {
         titleEl.innerHTML = `${mesCap} ${chosenYear}<br><span style="font-size:0.9em; font-weight:600">Semana ${weekNum}</span>`
       }
-  // Asegurar festivos cargados para los años visibles y luego re-renderizar para aplicar clases
-  const y1 = info.start.getFullYear()
-  const y2 = info.end.getFullYear()
-  await loadHolidaysForYear(y1)
-  if (y2 !== y1) await loadHolidaysForYear(y2)
-  // Recalcular clases de celdas/cabecera sin re-crear eventos
+  // Asegurar festivos cargados y re-renderizar
+  await ensureHolidayYears(info.start, info.end)
   calendar.rerenderDates()
     },
     eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
@@ -238,4 +204,27 @@ if (calendarEl) {
     },
   })
   calendar.render()
+  // Recalcular tamaño: inicial + durante transición usando ResizeObserver
+  const refreshSize = () => { try { calendar.updateSize() } catch {} }
+  requestAnimationFrame(() => { refreshSize(); requestAnimationFrame(refreshSize) })
+  let rafId = null
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(refreshSize)
+    })
+    if (sidebar) ro.observe(sidebar)
+    const mainWrapper = document.querySelector('.main-wrapper')
+    if (mainWrapper) ro.observe(mainWrapper)
+  } else {
+    // Fallback: eventos de transición
+    sidebar?.addEventListener('transitionrun', refreshSize)
+    sidebar?.addEventListener('transitionend', refreshSize)
+  }
+  // Al cambiar estado colapsado, forzar un par de recalculos adicionales como respaldo
+  collapseBtn?.addEventListener('click', () => {
+    requestAnimationFrame(refreshSize)
+    setTimeout(refreshSize, 120)
+    setTimeout(refreshSize, 260)
+  })
 }

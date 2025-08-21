@@ -2,6 +2,18 @@
 
 /* Estilos mínimos opcionales */
 .size-5 { width: 20px; height: 20px; }
+/* ===== Campo fecha personalizado (mismo ancho que otros inputs) ===== */
+[data-date-wrapper]{ position:relative; display:block; width:100%; cursor:pointer; }
+[data-date-wrapper] input{ cursor:pointer; background:#fff; width:100%; display:block; box-sizing:border-box; }
+input[type=date].has-custom-icon{ position:relative; padding-right:2.25rem; -webkit-appearance:none; appearance:none; }
+/* Ocultar indicador nativo sin alterar caja */
+input[type=date].has-custom-icon::-webkit-calendar-picker-indicator{ opacity:0; width:0; height:0; margin:0; }
+input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
+/* Icono decorativo (span en HTML) no captura eventos -> pointer-events:none ya) */
+/* iPad Safari: algunas versiones añaden padding extra; normalizamos */
+@supports (-webkit-touch-callout:none){
+	input[type=date].has-custom-icon{ line-height:normal; }
+}
 
 /* Centrar el título del calendario a todo el ancho */
 .fc .fc-header-toolbar {
@@ -35,3 +47,264 @@
 .fc .fc-col-header .fc-col-header-cell.is-holiday {
 	background-color: #fee2e2; /* red-100 */
 }
+
+/* ================== Vista mensual: altura base 132px ================== */
+.fc-dayGridMonth-view .fc-daygrid-day { /* toda la celda del día */
+	min-height: 132px; /* 32 (número) + 100 área eventos */
+	height: auto; /* permite crecer si hay más eventos */
+}
+.fc-dayGridMonth-view .fc-daygrid-day-frame {
+	display: flex;
+	flex-direction: column;
+	min-height: 132px;
+}
+.fc-dayGridMonth-view .fc-daygrid-day-top {
+	flex: 0 0 32px;
+	min-height: 32px;
+	height: 32px;
+	align-items: flex-start;
+	padding: 2px 4px 0 4px;
+}
+.fc-dayGridMonth-view .fc-daygrid-day-number {
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1;
+	margin: 0;
+}
+.fc-dayGridMonth-view .fc-daygrid-day-events { /* base 100px */
+	flex: 0 0 auto;
+	min-height: 100px;
+	position: relative;
+	padding-bottom: 0; /* sin hueco extra */
+}
+/* Eventos de 25px exactos */
+.fc-dayGridMonth-view .fc-daygrid-event-harness,
+.fc-dayGridMonth-view .fc-daygrid-event-harness .fc-daygrid-event {
+	height: 25px !important;
+	min-height: 25px !important;
+}
+.fc-dayGridMonth-view .fc-daygrid-event {
+	margin: 0 !important;
+	padding: 2px 4px !important;
+	font-size: 0.65rem;
+	line-height: 1;
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	box-sizing: border-box;
+}
+.fc-dayGridMonth-view .fc-daygrid-more-link {
+	display: flex;
+	align-items: center;
+	height: 25px;
+	padding: 2px 4px;
+	font-size: 0.65rem;
+	line-height: 1;
+}
+/* Eliminar márgenes que alteren la base */
+.fc-dayGridMonth-view .fc-daygrid-day-events > div { margin: 0 !important; }
+
+/* ================== Vista mensual (dayGridMonth) ================== */
+/* Estructura flexible de cada celda: 32px para número + bloque eventos */
+.fc-dayGridMonth-view .fc-daygrid-day-frame {
+	display: flex;
+	flex-direction: column;
+}
+.fc-dayGridMonth-view .fc-daygrid-day-top {
+	flex: 0 0 32px;
+	height: 32px;
+	min-height: 32px;
+	align-items: flex-start;
+	padding: 2px 4px 0 4px; /* espacio compacto */
+}
+.fc-dayGridMonth-view .fc-daygrid-day-number {
+	font-size: 0.75rem;
+	font-weight: 500;
+	margin: 0;
+	line-height: 1;
+}
+/* Área de eventos: base 100px => celda total mínima 132px (32+100) */
+.fc-dayGridMonth-view .fc-daygrid-day-events {
+	flex: 0 0 auto;
+	min-height: 100px;
+	position: relative;
+}
+/* Cada evento exactamente 25px de alto */
+.fc-dayGridMonth-view .fc-daygrid-event-harness,
+.fc-dayGridMonth-view .fc-daygrid-event-harness .fc-daygrid-event {
+	height: 25px !important;
+	min-height: 25px !important;
+}
+.fc-dayGridMonth-view .fc-daygrid-event {
+	margin: 0 !important;
+	padding: 2px 4px !important;
+	font-size: 0.65rem;
+	line-height: 1;
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	box-sizing: border-box;
+}
+/* El enlace de más eventos también ocupa 25px adicionales y respeta estilo */
+.fc-dayGridMonth-view .fc-daygrid-more-link {
+	display: flex;
+	align-items: center;
+	height: 25px;
+	padding: 2px 4px;
+	font-size: 0.65rem;
+	line-height: 1;
+}
+/* Quitar gaps verticales internos que inflen altura real */
+.fc-dayGridMonth-view .fc-daygrid-day-events > div { margin: 0 !important; }
+
+/* ================== Modo compacto opcional ================== */
+/* Activar añadiendo .calendar-compact al contenedor del calendario */
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-day { min-height: 100px; }
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-day-frame { min-height: 100px; }
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-day-top { flex: 0 0 24px; height: 24px; min-height: 24px; padding: 2px 4px 0 4px; }
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-day-number { font-size: 0.625rem; position: relative; top: -1px; }
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-day-events { min-height: 76px; }
+/* Eventos 22px de alto en compacto para ganar legibilidad */
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-event-harness,
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-event-harness .fc-daygrid-event { height: 22px !important; min-height: 22px !important; }
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-event { font-size: 0.7rem; line-height: 1.05; }
+.calendar-compact .fc-dayGridMonth-view .fc-daygrid-more-link { height: 22px; font-size: 0.65rem; line-height: 1.05; }
+.calendar-compact .fc .fc-toolbar-title { font-size: 0.95rem; }
+.calendar-compact .fc .fc-button { padding: 0.25rem 0.5rem; font-size: 0.65rem; }
+
+/* ================== Modo week-like (estética semanal aplicada a mes) ================== */
+.week-like .fc-dayGridMonth-view .fc-daygrid-day-events { min-height: auto; }
+.week-like .fc-dayGridMonth-view .fc-daygrid-event-harness,
+.week-like .fc-dayGridMonth-view .fc-daygrid-event-harness .fc-daygrid-event { height: 20px !important; min-height: 20px !important; }
+.week-like .fc-dayGridMonth-view .fc-daygrid-event {
+	margin: 0 !important;
+	padding: 2px 4px !important;
+	font-size: 0.65rem;
+	line-height: 1rem;
+	display: block;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.week-like .fc-dayGridMonth-view .fc-daygrid-day-events > div { margin: 0 !important; }
+
+/* Overrides adicionales para eliminar gap vertical bajo el último evento */
+.week-like .fc-dayGridMonth-view .fc-daygrid-day,
+.week-like .fc-dayGridMonth-view .fc-daygrid-day-frame { min-height: 0 !important; height: auto !important; padding-bottom: 0 !important; }
+.week-like .fc-dayGridMonth-view .fc-daygrid-day-frame { display: flex; flex-direction: column; }
+.week-like .fc-dayGridMonth-view .fc-daygrid-day-top { flex: 0 0 20px; height: 20px; min-height: 20px; padding: 2px 4px 0 4px; }
+.week-like .fc-dayGridMonth-view .fc-daygrid-day-events { flex: 0 0 auto; min-height: 0 !important; height: auto !important; margin: 0 !important; padding: 0 !important; }
+.week-like .fc-dayGridMonth-view .fc-daygrid-day.has-no-events .fc-daygrid-day-events {
+	display: block !important;
+	min-height: 80px !important;
+	height: 80px !important;
+}
+/* Quitar posible espacio reservado interno del harness padre */
+.week-like .fc-dayGridMonth-view .fc-daygrid-event-harness { margin: 0 !important; }
+/* Asegurar que la tabla no fuerza alturas uniformes si ya están liberadas */
+.week-like .fc-dayGridMonth-view .fc-daygrid-body table { height: auto !important; }
+
+/* ====== Indicadores visuales de selección y "diseño terminado" ====== */
+/* Nuevo estilo de selección: fondo suave + barra lateral + halo ligero */
+.fc-daygrid-event.is-selected {
+	position: relative;
+	background-color: #f0f9ff !important; /* sky-50 */
+	color: inherit !important;
+	outline: none;
+	box-shadow: 0 0 0 1px #0ea5e9, 0 0 0 3px #bae6fd inset; /* borde externo + halo interno */
+	border-radius: 4px;
+	transition: background-color .15s ease, box-shadow .15s ease;
+}
+.fc-daygrid-event.is-selected::before {
+	content: "";
+	position: absolute;
+	left: 0; top: 2px; bottom: 2px;
+	width: 3px;
+	background: #0ea5e9; /* sky-500 */
+	border-radius: 2px;
+}
+/* Feedback visual pulsación larga en día */
+.lp-highlight { animation: lpFlash 0.4s ease; }
+@keyframes lpFlash { from { box-shadow: inset 0 0 0 2px #0ea5e9; background:#f0f9ff; } to { box-shadow:none; background:transparent; } }
+/* Placeholder creación de evento (pulsación larga) */
+.fc-placeholder-creating { opacity:0.9; }
+/* Animación de creación de nuevo evento */
+.fc-placeholder-creating {
+	position: relative;
+	background: linear-gradient(90deg,#e0f2fe 0%, #f0f9ff 50%, #e0f2fe 100%);
+	background-size: 200% 100%;
+	animation: placeholderPulse 1.2s ease-in-out infinite, placeholderAppear .25s ease;
+	border: 1px dashed #0284c7;
+	color: #0369a1;
+	font-weight: 500;
+}
+/* Animación del panel al iniciar creación (flash azul suave) */
+#event-form-panel.flash-new { animation: panelFlash 2s ease; }
+#event-form-panel.creating-event { border-color:#0284c7 !important; box-shadow:0 0 0 1px #0284c7 inset; background:#effaff; }
+@keyframes panelFlash { 0% { background:#e0f2fe; box-shadow:0 0 0 2px #7dd3fc inset; } 60% { background:#f0f9ff; } 100% { background:#effaff; box-shadow:none; } }
+/* Campos de formulario deben seguir blancos aunque el panel esté azul claro */
+#event-form-panel.creating-event input[type="text"],
+#event-form-panel.creating-event input[type="number"],
+#event-form-panel.creating-event input[type="date"],
+#event-form-panel.creating-event textarea,
+#event-form-panel.creating-event [data-time-display],
+#event-form-panel.creating-event .date-picker-wrapper input {
+	background:#ffffff !important;
+}
+@keyframes placeholderPulse {
+	0% { background-position: 0% 0; }
+	100% { background-position: -200% 0; }
+}
+@keyframes placeholderAppear {
+	from { transform: scale(.95); opacity:0; }
+	to { transform: scale(1); opacity:0.9; }
+}
+/* Evitar selección de texto accidental en pulsación larga del calendario */
+.no-text-select, .no-text-select * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Icono tick verde al final (renderizado en DOM) */
+.fc-daygrid-event .design-finished-icon {
+	flex: 0 0 auto;
+	margin-left: .25rem;
+	font-size: 0.6rem;
+	line-height: 1;
+	color: #16a34a; /* green-600 */
+	font-weight: 600;
+}
+
+/* Asegurar que el wrapper del calendario se ajusta exactamente al contenido
+	evitando espacios en blanco debajo en escritorio y evitando scroll extra en iPad */
+#month-calendar,
+#month-calendar .fc,
+#month-calendar .fc-view-harness,
+#month-calendar .fc-view-harness-active { height: auto !important; min-height: 0 !important; }
+
+/* Eliminar aspect-ratio implícito que FullCalendar aplica cuando height es auto */
+#month-calendar .fc .fc-daygrid-body-natural { height: auto !important; }
+
+/* ================== Sidebar colapsable ================== */
+/* Estado base (ancho 16rem = w-64 ya definido en HTML) */
+#sidebar { transition: width 0.25s ease, padding 0.25s ease; }
+/* En pantallas >= lg aplicamos el modo colapsado visualmente */
+@media (min-width:1024px){
+	body.sidebar-collapsed #sidebar { width: 4rem; padding-left: 0.75rem; padding-right: 0.75rem; }
+	body.sidebar-collapsed #sidebar .brand-text { display:none; }
+	body.sidebar-collapsed #sidebar nav a .label { display:none; }
+	body.sidebar-collapsed #sidebar nav a { justify-content: center; padding-left: 0.5rem; padding-right: 0.5rem; }
+	body.sidebar-collapsed #sidebar nav a svg { margin-right:0; }
+	body.sidebar-collapsed #sidebar .collapse-icon[data-dir="left"] { display:none; }
+	body.sidebar-collapsed #sidebar .collapse-icon[data-dir="right"] { display:inline-flex; }
+	body:not(.sidebar-collapsed) #sidebar .collapse-icon[data-dir="left"] { display:inline-flex; }
+	body:not(.sidebar-collapsed) #sidebar .collapse-icon[data-dir="right"] { display:none; }
+	/* Ajustar contenido principal según estado */
+	body .main-wrapper { transition: margin-left 0.25s ease; }
+	body:not(.sidebar-collapsed) .main-wrapper { margin-left:16rem; }
+	body.sidebar-collapsed .main-wrapper { margin-left:4rem; }
+}
+/* Tooltip simple para modo colapsado usando title ya en los anchors */
+/* (Podría mejorarse con un pseudo-elemento personalizado) */
+
+
