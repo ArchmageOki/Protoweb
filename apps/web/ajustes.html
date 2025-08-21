@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TailAdmin — Ajustes</title>
+  </head>
+  <body class="bg-gray-50 text-slate-800">
+    <div id="app" class="min-h-screen flex">
+      <!-- Sidebar -->
+      <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transform bg-white border-r border-slate-200 p-4 transition-transform">
+        <div class="flex items-center justify-between mb-6">
+          <a href="/dashboard.html" class="text-xl font-semibold tracking-tight">Tailadmin</a>
+          <button id="sidebarClose" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Cerrar menú">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18 18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <nav class="space-y-1 text-sm">
+          <a href="/dashboard.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100">Dashboard</a>
+          <a href="#" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100">Usuarios</a>
+          <a href="#" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100">Calendario</a>
+          <a href="/ajustes.html" class="flex items-center gap-2 rounded-md px-3 py-2 font-medium text-slate-700 bg-slate-100">Ajustes</a>
+        </nav>
+      </aside>
+
+      <!-- Overlay for mobile -->
+      <div id="overlay" class="fixed inset-0 z-30 bg-slate-900/30 backdrop-blur-sm lg:hidden hidden"></div>
+
+      <!-- Main content -->
+      <div class="flex-1 lg:ml-64">
+        <header class="sticky top-0 z-30 bg-white border-b border-slate-200">
+          <div class="flex items-center gap-2 p-4">
+            <button id="sidebarOpen" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Abrir menú">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+            </button>
+            <h1 class="text-lg font-semibold">Ajustes</h1>
+            <div class="ml-auto flex items-center gap-3">
+              <div class="hidden sm:block">
+                <input type="text" placeholder="Buscar..." class="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              </div>
+              <button class="p-2 rounded-full border border-slate-300">
+                <span class="sr-only">Perfil</span>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main class="p-6">
+          <section class="rounded-lg border border-slate-200 bg-white p-0">
+            <!-- Tabs header -->
+            <div class="border-b border-slate-200 px-4 pt-4">
+              <nav class="flex gap-2 text-sm" role="tablist" aria-label="Pestañas de ajustes">
+                <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-slate-900 text-slate-900 font-medium" role="tab" aria-selected="true" data-tab="general">General</button>
+                <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-transparent text-slate-600 hover:text-slate-800" role="tab" aria-selected="false" data-tab="calendario">Calendario</button>
+                <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-transparent text-slate-600 hover:text-slate-800" role="tab" aria-selected="false" data-tab="prov1">Provisional 1</button>
+                <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-transparent text-slate-600 hover:text-slate-800" role="tab" aria-selected="false" data-tab="prov2">Provisional 2</button>
+              </nav>
+            </div>
+            <!-- Tabs content -->
+            <div class="p-4">
+              <div id="tab-general" role="tabpanel"></div>
+              <div id="tab-calendario" role="tabpanel" hidden>
+                <form class="mt-4 grid gap-3 max-w-xl" id="calendar-ccaa-form">
+                  <label class="text-sm font-medium" for="ccaa">Festivos de la Comunidad Autónoma</label>
+                  <select id="ccaa" name="ccaa" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                    <option value="ES-AN">Andalucía</option>
+                    <option value="ES-AR">Aragón</option>
+                    <option value="ES-AS">Principado de Asturias</option>
+                    <option value="ES-IB">Illes Balears</option>
+                    <option value="ES-CN">Canarias</option>
+                    <option value="ES-CB">Cantabria</option>
+                    <option value="ES-CM">Castilla-La Mancha</option>
+                    <option value="ES-CL">Castilla y León</option>
+                    <option value="ES-CT">Cataluña</option>
+                    <option value="ES-VC">Comunitat Valenciana</option>
+                    <option value="ES-EX">Extremadura</option>
+                    <option value="ES-GA">Galicia</option>
+                    <option value="ES-MD">Comunidad de Madrid</option>
+                    <option value="ES-MC">Región de Murcia</option>
+                    <option value="ES-NC">Comunidad Foral de Navarra</option>
+                    <option value="ES-PV">País Vasco</option>
+                    <option value="ES-RI">La Rioja</option>
+                    <option value="ES-CE">Ceuta</option>
+                    <option value="ES-ML">Melilla</option>
+                  </select>
+                  <div>
+                    <button type="submit" class="mt-2 inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800">
+                      Guardar cambios
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <div id="tab-prov1" role="tabpanel" hidden>
+              </div>
+              <div id="tab-prov2" role="tabpanel" hidden>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+    <script>
+      // Tabs simples: alterna aria-selected, bordes y paneles visibles
+      (function(){
+        const root = document.currentScript?.closest('body') || document.body
+        const btns = Array.from(root.querySelectorAll('.tab-btn'))
+        const panels = {
+          general: root.querySelector('#tab-general'),
+          calendario: root.querySelector('#tab-calendario'),
+          prov1: root.querySelector('#tab-prov1'),
+          prov2: root.querySelector('#tab-prov2'),
+        }
+        function activate(key){
+          btns.forEach(b => {
+            const isActive = b.dataset.tab === key
+            b.setAttribute('aria-selected', isActive ? 'true' : 'false')
+            b.classList.toggle('border-slate-900', isActive)
+            b.classList.toggle('text-slate-900', isActive)
+            b.classList.toggle('font-medium', isActive)
+            b.classList.toggle('border-transparent', !isActive)
+            b.classList.toggle('text-slate-600', !isActive)
+          })
+          Object.entries(panels).forEach(([k, el]) => {
+            if (!el) return
+            if (k === key) el.removeAttribute('hidden')
+            else el.setAttribute('hidden', '')
+          })
+        }
+        btns.forEach(b => b.addEventListener('click', () => activate(b.dataset.tab)))
+        // Estado inicial
+        activate('general')
+      })()
+    </script>
+    <script>
+      // Guardar/leer comunidad autónoma (CCAA) en localStorage para el calendario
+      (function(){
+        const KEY = 'app.settings'
+        const form = document.getElementById('calendar-ccaa-form')
+        const select = document.getElementById('ccaa')
+        const DEFAULT = 'ES-NC'
+        try {
+          const saved = JSON.parse(localStorage.getItem(KEY) || '{}')
+          const val = saved?.ccaa || DEFAULT
+          if (select) select.value = val
+        } catch {}
+        form?.addEventListener('submit', (e) => {
+          e.preventDefault()
+          try {
+            const saved = JSON.parse(localStorage.getItem(KEY) || '{}')
+            const next = { ...saved, ccaa: select.value }
+            localStorage.setItem(KEY, JSON.stringify(next))
+          } catch {}
+          // Volver al dashboard para ver el calendario con los festivos de la CCAA
+          window.location.href = '/dashboard.html'
+        })
+      })()
+    </script>
+    <script>
+  // Mejora del selector de CCAA: combobox con buscador y lista filtrable
+      (function(){
+        const FORM_ID = 'calendar-ccaa-form'
+        const SELECT_ID = 'ccaa'
+        const STORAGE_KEY = 'app.settings'
+        const DEFAULT_CCAA = 'ES-NC'
+        const form = document.getElementById(FORM_ID)
+        const select = document.getElementById(SELECT_ID)
+        if (!form || !select) return
+
+        // Cargar valor guardado
+        let savedVal = DEFAULT_CCAA
+        try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); if (saved?.ccaa) savedVal = saved.ccaa } catch {}
+        if (Array.from(select.options).some(o => o.value === savedVal)) select.value = savedVal
+
+        // Construir combobox
+        const wrapper = document.createElement('div')
+        wrapper.className = 'relative'
+        const input = document.createElement('input')
+        input.type = 'text'
+        input.className = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400'
+        input.setAttribute('role', 'combobox')
+        input.setAttribute('aria-expanded', 'false')
+        input.placeholder = 'Buscar comunidad...'
+        const panel = document.createElement('div')
+        panel.className = 'absolute z-10 mt-1 w-full rounded-md border border-slate-200 bg-white shadow hidden'
+        const list = document.createElement('ul')
+        list.setAttribute('role', 'listbox')
+        list.className = 'max-h-60 overflow-auto py-1 text-sm'
+        panel.appendChild(list)
+
+        // Obtener opciones (label y value)
+        const opts = Array.from(select.options).map(o => ({ label: o.textContent || o.label || o.value, value: o.value }))
+        // Prellenar input con la etiqueta actual
+        const current = opts.find(o => o.value === select.value)
+        if (current) input.value = current.label
+
+        // Helpers de filtrado y renderizado
+        const norm = s => (s || '').toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+        let visible = opts.slice()
+        let activeIndex = -1
+        function render(){
+          list.innerHTML = ''
+          visible.forEach((o, idx) => {
+            const li = document.createElement('li')
+            li.setAttribute('role', 'option')
+            li.dataset.value = o.value
+            li.className = 'px-3 py-2 cursor-pointer hover:bg-slate-100' + (idx===activeIndex ? ' bg-slate-100' : '')
+            li.textContent = o.label
+            li.addEventListener('mousedown', (e) => { // mousedown para que no pierda foco antes del click
+              e.preventDefault(); select.value = o.value; input.value = o.label; close()
+            })
+            list.appendChild(li)
+          })
+        }
+        function open(){ panel.classList.remove('hidden'); input.setAttribute('aria-expanded','true'); activeIndex = -1; render() }
+        function close(){ panel.classList.add('hidden'); input.setAttribute('aria-expanded','false') }
+        // Al abrir, limpiar el texto; si se cierra sin elegir, restaurar etiqueta actual
+        let prevLabel = ''
+        let prevValue = select.value
+        function openAndClear(){
+          prevValue = select.value
+          prevLabel = input.value
+          input.value = ''
+          open(); filter('')
+        }
+        function closeAndRestoreIfEmpty(){
+          if (input.value.trim() === '') {
+            const cur = opts.find(o => o.value === select.value)
+            if (cur) input.value = cur.label
+          }
+          close()
+        }
+        function filter(q){
+          const n = norm(q)
+          visible = n ? opts.filter(o => norm(o.label).includes(n) || norm(o.value).includes(n)) : opts.slice()
+          activeIndex = visible.length ? 0 : -1
+          render()
+        }
+
+        input.addEventListener('focus', () => { openAndClear() })
+        input.addEventListener('click', () => { openAndClear() })
+        input.addEventListener('input', () => filter(input.value))
+        input.addEventListener('keydown', (e) => {
+          if (panel.classList.contains('hidden')) return
+          if (e.key === 'ArrowDown') { e.preventDefault(); if (activeIndex < visible.length - 1) activeIndex++; render() }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); if (activeIndex > 0) activeIndex--; render() }
+          else if (e.key === 'Enter') { e.preventDefault(); if (activeIndex >= 0) { const o = visible[activeIndex]; select.value = o.value; input.value = o.label; close() } }
+          else if (e.key === 'Escape') { e.preventDefault(); closeAndRestoreIfEmpty() }
+        })
+        document.addEventListener('click', (e) => { if (!wrapper.contains(e.target)) closeAndRestoreIfEmpty() })
+
+        // Insertar combobox y ocultar select
+        select.classList.add('hidden')
+        select.parentElement.insertBefore(wrapper, select)
+        wrapper.appendChild(input)
+        wrapper.appendChild(panel)
+
+        // Guardar al enviar
+        form.addEventListener('submit', (e) => {
+          e.preventDefault()
+          try {
+            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+            const next = { ...saved, ccaa: select.value }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+          } catch {}
+          window.location.href = '/dashboard.html'
+        })
+      })()
+    </script>
+  </body>
+</html>
