@@ -3,8 +3,11 @@
   "private": true,
   "workspaces": ["apps/*", "services/*", "packages/*"],
   "scripts": {
+  "dev": "npm --workspace apps/web run dev",
     "dev:web": "npm --workspace apps/web run dev",
+  "build": "npm --workspace apps/web run build",
     "build:web": "npm --workspace apps/web run build",
+  "preview": "npm --workspace apps/web run preview",
     "preview:web": "npm --workspace apps/web run preview"
   }
 }

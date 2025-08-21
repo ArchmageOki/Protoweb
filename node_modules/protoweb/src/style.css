@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/* Estilos mínimos opcionales */
+.size-5 { width: 20px; height: 20px; }
+
+/* Centrar el título del calendario a todo el ancho */
+.fc .fc-header-toolbar {
+	display: grid;
+	grid-template-columns: 1fr auto 1fr; /* lados flexibles, título auto centrado */
+	align-items: center;
+	gap: 0.5rem;
+}
+.fc .fc-header-toolbar .fc-toolbar-chunk:nth-child(1) { justify-self: start; }
+.fc .fc-header-toolbar .fc-toolbar-chunk:nth-child(2) { justify-self: center; }
+.fc .fc-header-toolbar .fc-toolbar-chunk:nth-child(3) { justify-self: end; }
+.fc .fc-toolbar-title {
+	display: block;
+	text-align: center;
+	line-height: 1.2;
+}
+
+/* Sombreado rojo claro para domingos */
+.fc .fc-col-header-cell-sun,
+.fc .fc-day-sun {
+	background-color: #fee2e2; /* red-100 */
+}
+
+/* Festivos: mismo relleno rojo que los domingos */
+.fc .fc-daygrid-day.is-holiday,
+.fc .fc-daygrid-day.is-holiday .fc-daygrid-day-frame {
+	background-color: #fee2e2; /* red-100 */
+}
+
+/* Cabecera de día festivo (ej: "vie 15/08") */
+.fc .fc-col-header .fc-col-header-cell.is-holiday {
+	background-color: #fee2e2; /* red-100 */
+}
