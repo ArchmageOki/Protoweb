@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TailAdmin — Clientes</title>
+  </head>
+  <body class="bg-gray-50 text-slate-800">
+    <div id="app" class="min-h-screen flex">
+      <!-- Sidebar -->
+      <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transform bg-white border-r border-slate-200 p-4 transition-transform">
+        <div class="flex items-center justify-between mb-6">
+          <a href="/dashboard.html" class="text-xl font-semibold tracking-tight brand-text">Tailadmin</a>
+          <div class="flex items-center gap-1">
+            <button id="sidebarCollapse" class="hidden lg:inline-flex p-2 rounded hover:bg-slate-100" aria-label="Colapsar barra" title="Colapsar / Expandir">
+              <svg data-dir="left" class="collapse-icon size-5" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m15.75 19.5-7.5-7.5 7.5-7.5"/></svg>
+              <svg data-dir="right" class="collapse-icon size-5" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+            </button>
+            <button id="sidebarClose" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Cerrar menú">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18 18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <nav class="space-y-1 text-sm" aria-label="Navegación principal">
+          <a href="/dashboard.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Dashboard">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0 7-7 7 7m-9 9V9.5"/></svg>
+            <span class="label">Dashboard</span>
+          </a>
+          <a href="/calendario.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Calendario">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008Z"/></svg>
+            <span class="label">Calendario</span>
+          </a>
+          <a href="/clientes.html" class="flex items-center gap-2 rounded-md px-3 py-2 font-medium text-slate-700 bg-slate-100" title="Clientes">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
+            <span class="label">Clientes</span>
+          </a>
+          <a href="/ajustes.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Ajustes">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.5 12a7.5 7.5 0 0 1 13.007-4.5H21v3h-2.02c.013.167.02.334.02.5s-.007.333-.02.5H21v3h-3.493A7.5 7.5 0 0 1 4.5 12Z"/></svg>
+            <span class="label">Ajustes</span>
+          </a>
+        </nav>
+      </aside>
+
+      <div id="overlay" class="fixed inset-0 z-30 bg-slate-900/30 backdrop-blur-sm lg:hidden hidden"></div>
+
+      <div class="flex-1 main-wrapper lg:ml-64">
+        <header class="sticky top-0 z-30 bg-white border-b border-slate-200">
+          <div class="flex items-center gap-2 p-4">
+            <button id="sidebarOpen" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Abrir menú">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+            </button>
+            <h1 class="text-lg font-semibold">Clientes</h1>
+            <div class="ml-auto flex items-center gap-3">
+              <button class="p-2 rounded-full border border-slate-300" aria-label="Perfil">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main class="p-6">
+          <section class="rounded-lg border border-slate-200 bg-white p-4">
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+              <h2 class="font-semibold text-base flex items-center gap-2">Listado de clientes
+                <button id="clientes-filter-toggle" class="p-1.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-900" title="Mostrar/Ocultar filtros por columna" aria-label="Mostrar filtros">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="m21 21-4.35-4.35" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+              </h2>
+              <button id="cliente-add" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800">
+                <svg xmlns="http://www.w3.org/2000/svg" class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                <span>Nuevo cliente</span>
+              </button>
+            </div>
+            <p class="text-xs text-slate-500 mt-2">Campos actuales: Nombre, Apellidos, Móvil, Instagram, DNI, Fecha de nacimiento, Citas completadas, Última cita, Notas. Recomendados adicionales: Alergias, Preferencias de estilo, Color de piel (Fitzpatrick), Consentimiento, Historial de citas.</p>
+
+            <div class="mt-4 overflow-x-auto">
+              <table class="min-w-full text-sm clients-table clients-table-nowrap">
+                <thead>
+                  <tr class="text-left border-b border-slate-200 bg-slate-50 select-none">
+                    <th data-sort="nombre" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Nombre</th>
+                    <th data-sort="apellidos" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Apellidos</th>
+                    <th data-sort="movil" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Móvil</th>
+                    <th data-sort="instagram" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Instagram</th>
+                    <th data-sort="dni" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">DNI</th>
+                    <th data-sort="nacimiento" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100 whitespace-nowrap" title="Fecha de nacimiento">Nacimiento</th>
+                    <th data-sort="visitas" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100 whitespace-nowrap">Citas completadas</th>
+                    <th data-sort="ultimaCita" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100 whitespace-nowrap">Última cita</th>
+                    <th data-sort="notas" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Notas</th>
+                  </tr>
+                  <tr id="clientes-filters-row" class="bg-slate-50 border-b border-slate-200 hidden">
+                    <th class="px-2 py-1"><input data-col="nombre" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
+                    <th class="px-2 py-1"><input data-col="apellidos" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
+                    <th class="px-2 py-1"><input data-col="movil" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
+                    <th class="px-2 py-1"><input data-col="instagram" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
+                    <th class="px-2 py-1"><input data-col="dni" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
+                    <th class="px-2 py-1"><input data-col="nacimiento" placeholder="dd/mm/aaaa" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" title="Fecha (coincidencia parcial)" /></th>
+                    <th class="px-2 py-1"><input data-col="visitas" placeholder="nº" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" title="Citas completadas (coincidencia parcial / * )" /></th>
+                    <th class="px-2 py-1"><input data-col="ultimaCita" placeholder="dd/mm/aaaa" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" title="Fecha (coincidencia parcial)" /></th>
+                    <th class="px-2 py-1"><input data-col="notas" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
+                  </tr>
+                </thead>
+                <tbody id="clientes-tbody" class="divide-y divide-slate-100">
+                  <!-- Filas generadas dinámicamente por clientes.js -->
+                </tbody>
+              </table>
+              <div class="mt-3 flex flex-wrap items-center gap-4 text-xs">
+                <label class="flex items-center gap-1">Mostrar
+                  <select id="clientes-page-size" class="border border-slate-300 rounded px-2 py-1 bg-white">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                  registros
+                </label>
+                <div id="clientes-pagination" class="flex items-center gap-1 ml-auto"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  <script type="module" src="/src/clientes.js"></script>
+  </body>
+</html>

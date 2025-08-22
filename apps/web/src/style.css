@@ -288,6 +288,9 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 /* ================== Sidebar colapsable ================== */
 /* Estado base (ancho 16rem = w-64 ya definido en HTML) */
 #sidebar { transition: width 0.25s ease, padding 0.25s ease; }
+/* Asegurar que el contenedor principal puede encoger y no fuerza overflow */
+#app { min-width:0; }
+.main-wrapper { flex:1 1 auto; min-width:0; width:100%; max-width:100%; overflow-x:hidden; box-sizing:border-box; }
 /* En pantallas >= lg aplicamos el modo colapsado visualmente */
 @media (min-width:1024px){
 	body.sidebar-collapsed #sidebar { width: 4rem; padding-left: 0.75rem; padding-right: 0.75rem; }
@@ -304,7 +307,19 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 	body:not(.sidebar-collapsed) .main-wrapper { margin-left:16rem; }
 	body.sidebar-collapsed .main-wrapper { margin-left:4rem; }
 }
-/* Tooltip simple para modo colapsado usando title ya en los anchors */
-/* (Podría mejorarse con un pseudo-elemento personalizado) */
+
+/* ===== Tabla clientes: scroll horizontal ===== */
+.clients-table-nowrap{ table-layout:auto; }
+.clients-table-nowrap th, .clients-table-nowrap td { white-space:nowrap; }
+.clients-table { width:100%; }
+/* Truncamiento de contenido a 25ch en una sola línea */
+.clients-table .cell-text { display:inline-block; max-width:25ch; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; white-space:nowrap; }
+.clients-table td, .clients-table th { line-height:1.2; }
+/* Fila de filtros no debe provocar salto de ancho */
+#clientes-filters-row th { padding-top:0.25rem; padding-bottom:0.25rem; }
+#clientes-filters-row input { box-sizing:border-box; width:100%; }
+/* Indicador óptico de desvanecido al final para sugerir scroll */
+.clients-table-wrapper { position:relative; }
+.clients-table-wrapper::after { content:''; position:absolute; top:0; bottom:0; right:0; width:24px; pointer-events:none; background:linear-gradient(90deg,rgba(255,255,255,0),#fff); }
 
 
