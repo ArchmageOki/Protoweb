@@ -312,6 +312,16 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 .clients-table-nowrap{ table-layout:auto; }
 .clients-table-nowrap th, .clients-table-nowrap td { white-space:nowrap; }
 .clients-table { width:100%; }
+.clientes-filter-input { background:#ffffff !important; }
+.clientes-filter-input:focus { background:#ffffff !important; }
+.cliente-phone-link { color:#128C7E; /* tono principal WhatsApp dark */ }
+.cliente-phone-link:hover { color:#25D366; }
+/* Instagram: degradado aplicado al texto usando background-clip */
+.cliente-ig-link { color:#E1306C; }
+.cliente-ig-link:hover { color:#ff4685; }
+/* Destello fila nuevo cliente */
+.cliente-row-flash { animation: rowFlash 2s ease; }
+@keyframes rowFlash { 0% { background:#ecfdf5; } 30% { background:#d1fae5; } 100% { background:transparent; } }
 /* Truncamiento de contenido a 25ch en una sola línea */
 .clients-table .cell-text { display:inline-block; max-width:25ch; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; white-space:nowrap; }
 .clients-table td, .clients-table th { line-height:1.2; }
@@ -321,5 +331,272 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 /* Indicador óptico de desvanecido al final para sugerir scroll */
 .clients-table-wrapper { position:relative; }
 .clients-table-wrapper::after { content:''; position:absolute; top:0; bottom:0; right:0; width:24px; pointer-events:none; background:linear-gradient(90deg,rgba(255,255,255,0),#fff); }
+/* ===== Editor de cliente (side panel) ===== */
+.cliente-editor-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(15, 23, 42, 0.4);
+	backdrop-filter: blur(2px);
+	display: flex;
+	justify-content: flex-end;
+	z-index: 100;
+	opacity: 0;
+	transition: opacity .25s ease;
+}
 
+/* Asegurar que al añadir la clase hidden realmente se oculte (sobrescribe display:flex) */
+.cliente-editor-overlay.hidden { display: none !important; }
+
+/* Estado visible (fade-in/out) */
+.cliente-editor-overlay.is-open { opacity: 1; }
+
+.cliente-editor-panel {
+	width: 100%;
+	max-width: 420px; /* tamaño original por defecto; el JS de resize puede ampliarlo hasta 640px */
+	background: #fff;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	box-shadow: -4px 0 12px -2px rgba(0, 0, 0, 0.15);
+}
+
+/* Handle de redimensionado (zona arrastrable) */
+.cliente-editor-resize-handle {
+	position: absolute;
+	left: -6px;
+	top: 0;
+	width: 8px;
+	height: 100%;
+	cursor: ew-resize;
+	background: transparent;
+}
+.cliente-editor-resize-handle::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 2px;
+	height: 48px;
+	background: linear-gradient(to bottom, #cbd5e1 0%, #94a3b8 100%);
+	border-radius: 2px;
+	opacity: 0.4;
+}
+.cliente-editor-resize-handle:hover::after { opacity: 0.8; }
+
+/* Variante iPad: barra negra tipo indicador iOS más evidente */
+.cliente-editor-resize-handle.is-touch::after {
+	width: 4px;
+	height: 72px; /* más larga */
+	background: #000;
+	border-radius: 4px;
+	opacity: 0.55;
+	/* Dos pulsos progresivos: uno pequeño y luego otro algo mayor */
+	animation: ceHandlePulse 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.cliente-editor-resize-handle.is-touch:hover::after { opacity: 0.85; }
+
+@keyframes ceHandlePulse {
+	0% { transform: translate(-50%, -50%) scaleX(1); opacity: 0.50; }
+	18% { transform: translate(-50%, -50%) scaleX(1.12); opacity: 0.68; } /* primer pulso suave */
+	30% { transform: translate(-50%, -50%) scaleX(1.02); opacity: 0.60; } /* vuelve casi a base */
+	55% { transform: translate(-50%, -50%) scaleX(1.25); opacity: 0.78; } /* segundo pulso más notorio */
+	70% { transform: translate(-50%, -50%) scaleX(1.06); opacity: 0.63; } /* desvaneciendo */
+	100% { transform: translate(-50%, -50%) scaleX(1); opacity: 0.50; } /* base */
+}
+
+/* Animaciones de entrada / salida simétricas */
+.cliente-editor-panel.is-enter { animation: slideIn .25s ease forwards; }
+.cliente-editor-panel.is-exit { animation: slideOut .25s ease forwards; }
+
+@keyframes slideIn {
+	from {
+		transform: translateX(40px);
+		opacity: 0;
+	}
+
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+@keyframes slideOut {
+	from {
+		transform: translateX(0);
+		opacity: 1;
+	}
+	to {
+		transform: translateX(40px);
+		opacity: 0;
+	}
+}
+
+.cliente-editor-header {
+	padding: 1rem 1.25rem;
+	border-bottom: 1px solid #e2e8f0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.cliente-editor-body {
+	padding: 1rem 1.25rem;
+	overflow-y: auto;
+	flex: 1 1 auto;
+}
+
+.cliente-editor-footer {
+	padding: 0.75rem 1.25rem;
+	border-top: 1px solid #e2e8f0;
+	display: flex;
+	gap: 0.5rem;
+	justify-content: flex-end;
+}
+
+.cliente-editor-form label {
+	font-size: 0.65rem;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	font-weight: 600;
+	color: #475569;
+	display: block;
+	margin-bottom: 0.25rem;
+}
+.cliente-editor-form .req-indicator { color:#dc2626; font-weight:700; margin-left:2px; }
+
+.cliente-editor-form input[type=text],
+.cliente-editor-form input[type=number],
+.cliente-editor-form input[type=date],
+.cliente-editor-form textarea {
+	width: 100%;
+	border: 1px solid #cbd5e1;
+	border-radius: 0.375rem;
+	padding: 0.5rem 0.625rem;
+	font-size: 0.75rem;
+	line-height: 1.1;
+	box-sizing: border-box;
+}
+/* Afinar aspecto del date (Nacimiento) en iPad para que no parezca distinto */
+@supports (-webkit-touch-callout: none) {
+	.cliente-editor-form input[name=nacimiento][type=date] {
+		font-size: 0.75rem;
+		line-height: 1.1;
+		padding: 0.5rem 0.625rem; /* igual que otros */
+		height: 2.0rem; /* forzar misma altura visual */
+		background-color:#fff;
+		color:#0f172a;
+		font-family: inherit;
+		border: 1px solid #cbd5e1;
+		border-radius: 0.375rem;
+		box-sizing: border-box;
+		appearance: none; /* mantiene picker al tocar el campo, pero normaliza rectángulo */
+	}
+	/* Eliminar padding interno y asegurar alineación */
+	.cliente-editor-form input[name=nacimiento][type=date]::-webkit-date-and-time-value { text-align:left; padding:0; line-height:1.1; }
+	.cliente-editor-form input[name=nacimiento][type=date]::-webkit-datetime-edit-fields-wrapper { padding:0; }
+	.cliente-editor-form input[name=nacimiento][type=date]::-webkit-datetime-edit { padding:0; }
+	.cliente-editor-form input[name=nacimiento][type=date]::-webkit-datetime-edit-text { padding:0; }
+	.cliente-editor-form input[name=nacimiento][type=date]::-webkit-datetime-edit-year-field,
+	.cliente-editor-form input[name=nacimiento][type=date]::-webkit-datetime-edit-month-field,
+	.cliente-editor-form input[name=nacimiento][type=date]::-webkit-datetime-edit-day-field { padding:0 2px; }
+	.cliente-editor-form input[name=nacimiento][type=date]:focus { outline:2px solid #64748b; outline-offset:1px; }
+}
+
+.cliente-editor-form .cliente-editor-readonly[readonly] {
+	background: #f1f5f9;
+	color: #64748b;
+	cursor: not-allowed;
+	pointer-events: none; /* Evita apertura de pickers (iPad/iOS) */
+}
+
+.cliente-editor-form textarea {
+	min-height: 80px;
+	resize: vertical;
+}
+
+.cliente-editor-form input:focus,
+.cliente-editor-form textarea:focus {
+	outline: 2px solid #64748b;
+	outline-offset: 1px;
+}
+
+.cliente-editor-close {
+	background: none;
+	border: none;
+	padding: 0.25rem;
+	border-radius: 0.375rem;
+	cursor: pointer;
+}
+
+.cliente-editor-close:hover {
+	background: #f1f5f9;
+}
+
+.cliente-editor-badge {
+	background: #f1f5f9;
+	padding: 0.15rem 0.5rem;
+	border-radius: 999px;
+	font-size: 0.625rem;
+	font-weight: 500;
+}
+
+.cliente-editor-footer button {
+	font-size: 0.75rem;
+	padding: 0.55rem 0.95rem;
+	border-radius: 0.5rem;
+	font-weight: 500;
+}
+
+.btn-secondary {
+	background: #f1f5f9;
+	border: 1px solid #cbd5e1;
+}
+
+.btn-secondary:hover {
+	background: #e2e8f0;
+}
+
+.btn-primary {
+	background: #0f172a;
+	color: #fff;
+	border: 1px solid #0f172a;
+}
+
+.btn-primary:hover {
+	background: #1e293b;
+}
+
+.cliente-editor-invalid {
+	border-color: #dc2626 !important;
+}
+
+.cliente-editor-error-text {
+	color: #dc2626;
+	font-size: 0.625rem;
+	margin-top: 0.25rem;
+}
+
+/* ===== Visor de adjuntos (fullscreen) ===== */
+.attachment-viewer-overlay { position:fixed; inset:0; z-index:200; background:rgba(15,23,42,0.85); backdrop-filter:blur(2px); display:flex; flex-direction:column; opacity:0; pointer-events:none; transition:opacity .25s ease; }
+.attachment-viewer-overlay.is-open { opacity:1; pointer-events:auto; }
+.attachment-viewer-toolbar { display:flex; align-items:center; gap:.75rem; padding:.75rem 1rem; background:rgba(30,41,59,0.6); -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); color:#f1f5f9; }
+.attachment-viewer-toolbar h4 { font-size:.8rem; font-weight:600; margin:0; flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.attachment-viewer-toolbar button, .attachment-viewer-toolbar a { font-size:.7rem; padding:.45rem .85rem; border-radius:.5rem; font-weight:500; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.08); color:#f1f5f9; display:inline-flex; align-items:center; gap:.35rem; }
+.attachment-viewer-toolbar button:hover, .attachment-viewer-toolbar a:hover { background:rgba(255,255,255,0.18); }
+.attachment-viewer-body { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:1rem; }
+.attachment-viewer-body img { max-width:100%; max-height:100%; object-fit:contain; box-shadow:0 4px 24px -4px rgba(0,0,0,0.5); border-radius:.5rem; }
+.attachment-viewer-body iframe { width:100%; height:100%; border:1px solid #334155; background:#1e293b; border-radius:.5rem; box-shadow:0 4px 28px -6px rgba(0,0,0,0.6); }
+.attachment-viewer-hint { position:absolute; bottom:.75rem; right:1rem; font-size:.65rem; color:#94a3b8; opacity:.85; }
+/* Miniaturas carrusel */
+.attachment-viewer-thumbs { position:absolute; bottom:0; left:0; right:0; padding:.5rem .75rem .65rem; display:flex; gap:.5rem; overflow-x:auto; background:linear-gradient(to top, rgba(15,23,42,0.9), rgba(15,23,42,0)); scrollbar-width:thin; }
+.attachment-viewer-thumbs::-webkit-scrollbar { height:6px; }
+.attachment-viewer-thumbs::-webkit-scrollbar-track { background:transparent; }
+.attachment-viewer-thumbs::-webkit-scrollbar-thumb { background:#334155; border-radius:4px; }
+.attachment-viewer-thumb { flex:0 0 auto; width:56px; height:40px; border:2px solid transparent; border-radius:.4rem; overflow:hidden; position:relative; cursor:pointer; background:#1e293b; display:flex; align-items:center; justify-content:center; font-size:.55rem; font-weight:600; color:#e2e8f0; }
+.attachment-viewer-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.attachment-viewer-thumb.active { border-color:#f59e0b; box-shadow:0 0 0 2px rgba(245,158,11,0.35); }
+.attachment-viewer-toolbar .zoom-group { display:inline-flex; align-items:center; gap:.25rem; }
+.attachment-viewer-toolbar .zoom-group button { padding:.35rem .55rem; }
+.attachment-viewer-zoomed img { cursor:grab; }
 

@@ -24,19 +24,21 @@
         </div>
         <nav class="space-y-1 text-sm" aria-label="Navegación principal">
           <a href="/dashboard.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Dashboard">
-            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0 7-7 7 7m-9 9V9.5"/></svg>
+            <!-- Icono casa -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m3 11 9-8 9 8M5 9v11h5v-6h4v6h5V9"/></svg>
             <span class="label">Dashboard</span>
-          </a>
-          <a href="#" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Usuarios">
-            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
-            <span class="label">Usuarios</span>
           </a>
           <a href="/calendario.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Calendario">
             <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008Z"/></svg>
             <span class="label">Calendario</span>
           </a>
+          <a href="/clientes.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Clientes">
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
+            <span class="label">Clientes</span>
+          </a>
           <a href="/ajustes.html" class="flex items-center gap-2 rounded-md px-3 py-2 font-medium text-slate-700 bg-slate-100" title="Ajustes">
-            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.5 12a7.5 7.5 0 0 1 13.007-4.5H21v3h-2.02c.013.167.02.334.02.5s-.007.333-.02.5H21v3h-3.493A7.5 7.5 0 0 1 4.5 12Z"/></svg>
+            <!-- Icono engranaje -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.62 3.5 8.94 5.8a6.5 6.5 0 0 0-1.77 1.02l-2.3-.5-1.25 2.17 1.8 1.57a6.5 6.5 0 0 0-.06 1.92L3.62 14.5l1.25 2.17 2.3-.5c.52.43 1.11.78 1.77 1.02l.68 2.3h2.5l.68-2.3a6.5 6.5 0 0 0 1.77-1.02l2.3.5 1.25-2.17-1.8-1.57c.07-.63.07-1.29 0-1.92l1.8-1.57-1.25-2.17-2.3.5a6.5 6.5 0 0 0-1.77-1.02l-.68-2.3h-2.5Z"/><circle cx="12" cy="12" r="2.75"/></svg>
             <span class="label">Ajustes</span>
           </a>
         </nav>
@@ -72,7 +74,7 @@
               <nav class="flex gap-2 text-sm" role="tablist" aria-label="Pestañas de ajustes">
                 <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-slate-900 text-slate-900 font-medium" role="tab" aria-selected="true" data-tab="general">General</button>
                 <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-transparent text-slate-600 hover:text-slate-800" role="tab" aria-selected="false" data-tab="calendario">Calendario</button>
-                <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-transparent text-slate-600 hover:text-slate-800" role="tab" aria-selected="false" data-tab="prov1">Provisional 1</button>
+                <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-transparent text-slate-600 hover:text-slate-800" role="tab" aria-selected="false" data-tab="clientes">Clientes</button>
                 <button class="tab-btn px-3 py-2 rounded-t-md border-b-2 border-transparent text-slate-600 hover:text-slate-800" role="tab" aria-selected="false" data-tab="prov2">Provisional 2</button>
               </nav>
             </div>
@@ -110,7 +112,26 @@
                   </div>
                 </form>
               </div>
-              <div id="tab-prov1" role="tabpanel" hidden>
+              <div id="tab-clientes" role="tabpanel" hidden>
+                <div class="mt-4 space-y-6 max-w-3xl" id="tab-clientes-wrapper">
+                  <!-- Sección: Visibilidad de columnas -->
+                  <section id="cliente-column-selector-root" class="rounded-md border border-slate-200 bg-white shadow-sm p-4">
+                    <header class="mb-4">
+                      <h2 class="text-sm font-semibold tracking-wide text-slate-700 uppercase">Visibilidad de columnas</h2>
+                      <p class="mt-1 text-xs text-slate-500 max-w-prose">Configura qué columnas aparecen en la tabla de clientes. Esto te ayuda a centrarte sólo en la información que necesitas. <span class="block mt-1">Nombre y Móvil siempre permanecen visibles.</span></p>
+                    </header>
+                    <fieldset class="space-y-4" aria-describedby="cliente-column-selector-help">
+                      <legend class="sr-only">Columnas visibles</legend>
+                      <div id="cliente-column-selector" class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm"></div>
+                      <div class="flex flex-wrap gap-2">
+                        <button type="button" id="cliente-cols-guardar" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-3 py-2 text-xs hover:bg-slate-800">Guardar selección</button>
+                        <button type="button" id="cliente-cols-restablecer" class="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-xs hover:bg-slate-100">Restablecer todo</button>
+                      </div>
+                      <p id="cliente-column-selector-help" class="text-[11px] leading-snug text-slate-500">Las preferencias se guardan localmente (navegador) y se aplicarán al recargar la página de clientes.</p>
+                    </fieldset>
+                  </section>
+                  <!-- Futuras secciones de ajustes de clientes pueden añadirse aquí -->
+                </div>
               </div>
               <div id="tab-prov2" role="tabpanel" hidden>
               </div>
@@ -129,7 +150,7 @@
         const panels = {
           general: root.querySelector('#tab-general'),
           calendario: root.querySelector('#tab-calendario'),
-          prov1: root.querySelector('#tab-prov1'),
+          clientes: root.querySelector('#tab-clientes'),
           prov2: root.querySelector('#tab-prov2'),
         }
         function activate(key){
@@ -150,7 +171,7 @@
         }
         btns.forEach(b => b.addEventListener('click', () => activate(b.dataset.tab)))
         // Estado inicial
-        activate('general')
+  activate('general')
       })()
     </script>
     <script>
@@ -285,6 +306,82 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
           } catch {}
           window.location.href = '/dashboard.html'
+        })
+      })()
+    </script>
+    <script>
+      // Selector de columnas para clientes
+      (function(){
+        const KEY = 'app.settings'
+        const root = document.getElementById('cliente-column-selector')
+        if(!root) return
+        const AVAILABLE = [
+          { key:'nombre', label:'Nombre', locked:true },
+          { key:'apellidos', label:'Apellidos' },
+          { key:'movil', label:'Móvil', locked:true },
+          { key:'instagram', label:'Instagram' },
+          { key:'dni', label:'DNI' },
+          { key:'direccion', label:'Dirección' },
+          { key:'codigoPostal', label:'Código postal' },
+          { key:'nacimiento', label:'Nacimiento' },
+          { key:'visitas', label:'Citas totales' },
+          { key:'dineroTotal', label:'Dinero total' },
+          { key:'ultimaCita', label:'Última cita' },
+          { key:'notas', label:'Notas' }
+        ]
+        // Cargar selección guardada
+        let savedVisible = null
+        try { const saved = JSON.parse(localStorage.getItem(KEY) || '{}'); savedVisible = saved.clientes?.visibleColumns || null } catch {}
+        if(!Array.isArray(savedVisible) || !savedVisible.length){ savedVisible = AVAILABLE.map(c=>c.key) }
+        // Normalizar: forzar columnas locked
+        const LOCKED = AVAILABLE.filter(c=>c.locked).map(c=>c.key)
+        const normSet = new Set(savedVisible)
+        let changed = false
+        LOCKED.forEach(k=>{ if(!normSet.has(k)){ normSet.add(k); changed=true } })
+        if(changed){
+          savedVisible = Array.from(normSet)
+          try {
+            const prev = JSON.parse(localStorage.getItem(KEY) || '{}')
+            const next = { ...prev, clientes: { ...(prev.clientes||{}), visibleColumns: savedVisible } }
+            localStorage.setItem(KEY, JSON.stringify(next))
+          } catch {}
+        }
+        // Render checkboxes
+        root.innerHTML = ''
+        AVAILABLE.forEach(col => {
+          const id = 'col-vis-' + col.key
+          const div = document.createElement('label')
+          const locked = !!col.locked
+          div.className = 'flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs cursor-pointer hover:bg-slate-50' + (locked ? ' opacity-80' : '')
+          const checkedAttr = 'checked' // locked siempre checked; para otros se calcula abajo
+          const isChecked = savedVisible.includes(col.key) || locked
+          div.innerHTML = `<input type="checkbox" id="${id}" data-col-key="${col.key}" class="rounded border-slate-300" ${isChecked?'checked':''} ${locked?'disabled':''}/> <span>${col.label}${locked?' *':''}</span>`
+          root.appendChild(div)
+        })
+        // Guardar
+        const saveBtn = document.getElementById('cliente-cols-guardar')
+        const resetBtn = document.getElementById('cliente-cols-restablecer')
+        function save(columns){
+          try {
+            const prev = JSON.parse(localStorage.getItem(KEY) || '{}')
+            const next = { ...prev, clientes: { ...(prev.clientes||{}), visibleColumns: columns } }
+            localStorage.setItem(KEY, JSON.stringify(next))
+          } catch {}
+        }
+        saveBtn?.addEventListener('click', () => {
+          let cols = Array.from(root.querySelectorAll('input[data-col-key]:checked')).map(i=>i.getAttribute('data-col-key'))
+          // Garantizar columnas bloqueadas
+          AVAILABLE.filter(c=>c.locked).forEach(c=>{ if(!cols.includes(c.key)) cols.push(c.key) })
+          save(cols)
+          saveBtn.disabled = true
+          const original = saveBtn.textContent
+          saveBtn.textContent = 'Guardado'
+          setTimeout(()=>{ saveBtn.textContent = original; saveBtn.disabled=false },1200)
+        })
+        resetBtn?.addEventListener('click', () => {
+          root.querySelectorAll('input[data-col-key]').forEach(i=> { if(!i.disabled) i.checked=true })
+          const all = AVAILABLE.map(c=>c.key) // locked ya presentes
+          save(all)
         })
       })()
     </script>
