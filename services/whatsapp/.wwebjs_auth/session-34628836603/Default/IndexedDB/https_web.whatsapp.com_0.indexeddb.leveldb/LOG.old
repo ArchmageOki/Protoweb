@@ -1,0 +1,17 @@
+2025/08/24-16:35:52.823 6324 Reusing MANIFEST D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/08/24-16:35:52.824 6324 Recovering log #215
+2025/08/24-16:35:52.918 6324 Reusing old log D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000215.log 
+2025/08/24-16:35:54.258 1d84 Level-0 table #222: started
+2025/08/24-16:35:54.265 1d84 Level-0 table #222: 461894 bytes OK
+2025/08/24-16:35:54.265 1d84 Delete type=0 #215
+2025/08/24-16:35:54.266 1d84 Manual compaction at level-0 from '\x003\x00\x00\x00' @ 72057594037927935 : 1 .. '\x004\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/08/24-16:35:55.520 55ec Compacting 1@1 + 3@2 files
+2025/08/24-16:35:55.563 55ec Generated table #223@1: 31369 keys, 2164705 bytes
+2025/08/24-16:35:55.599 55ec Generated table #224@1: 22648 keys, 2189797 bytes
+2025/08/24-16:35:55.638 55ec Generated table #225@1: 37260 keys, 1074512 bytes
+2025/08/24-16:35:55.638 55ec Compacted 1@1 + 3@2 files => 5429014 bytes
+2025/08/24-16:35:55.639 55ec compacted to: files[ 0 0 3 0 0 0 0 ]
+2025/08/24-16:35:55.639 55ec Delete type=2 #217
+2025/08/24-16:35:55.639 55ec Delete type=2 #218
+2025/08/24-16:35:55.639 55ec Delete type=2 #219
+2025/08/24-16:35:55.639 55ec Delete type=2 #222

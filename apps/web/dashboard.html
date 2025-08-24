@@ -8,47 +8,8 @@
   </head>
   <body class="bg-gray-50 text-slate-800">
     <div id="app" class="min-h-screen flex">
-      <!-- Sidebar -->
-      <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transform bg-white border-r border-slate-200 p-4 transition-transform">
-        <div class="flex items-center justify-between mb-6">
-          <a href="#" class="text-xl font-semibold tracking-tight brand-text">Tailadmin</a>
-          <div class="flex items-center gap-1">
-            <button id="sidebarCollapse" class="hidden lg:inline-flex p-2 rounded hover:bg-slate-100" aria-label="Colapsar barra" title="Colapsar / Expandir">
-              <svg data-dir="left" class="collapse-icon size-5" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m15.75 19.5-7.5-7.5 7.5-7.5"/></svg>
-              <svg data-dir="right" class="collapse-icon size-5" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-            </button>
-            <button id="sidebarClose" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Cerrar menú">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18 18 6M6 6l12 12"/></svg>
-            </button>
-          </div>
-        </div>
-        <nav class="space-y-1 text-sm" aria-label="Navegación principal">
-          <a href="#" class="flex items-center gap-2 rounded-md px-3 py-2 font-medium text-slate-700 bg-slate-100" title="Dashboard">
-            <!-- Icono casa -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m3 11 9-8 9 8M5 9v11h5v-6h4v6h5V9"/></svg>
-            <span class="label">Dashboard</span>
-          </a>
-          <a href="/calendario.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Calendario">
-            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008Z"/></svg>
-            <span class="label">Calendario</span>
-          </a>
-          <a href="/clientes.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Clientes">
-            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
-            <span class="label">Clientes</span>
-          </a>
-          <a href="/ajustes.html" class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" title="Ajustes">
-            <!-- Icono engranaje -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.62 3.5 8.94 5.8a6.5 6.5 0 0 0-1.77 1.02l-2.3-.5-1.25 2.17 1.8 1.57a6.5 6.5 0 0 0-.06 1.92L3.62 14.5l1.25 2.17 2.3-.5c.52.43 1.11.78 1.77 1.02l.68 2.3h2.5l.68-2.3a6.5 6.5 0 0 0 1.77-1.02l2.3.5 1.25-2.17-1.8-1.57c.07-.63.07-1.29 0-1.92l1.8-1.57-1.25-2.17-2.3.5a6.5 6.5 0 0 0-1.77-1.02l-.68-2.3h-2.5Z"/><circle cx="12" cy="12" r="2.75"/></svg>
-            <span class="label">Ajustes</span>
-          </a>
-        </nav>
-      </aside>
-
-      <!-- Overlay for mobile -->
-      <div id="overlay" class="fixed inset-0 z-30 bg-slate-900/30 backdrop-blur-sm lg:hidden hidden"></div>
-
-      <!-- Main content -->
-  <div class="flex-1 main-wrapper lg:ml-64">
+      <!-- Sidebar se inyecta dinámicamente -->
+      <div class="flex-1 main-wrapper lg:ml-64">
         <header class="sticky top-0 z-30 bg-white border-b border-slate-200">
           <div class="flex items-center gap-2 p-4">
             <button id="sidebarOpen" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Abrir menú">
@@ -112,6 +73,7 @@
       </div>
     </div>
 
-    <script type="module" src="/src/main.js"></script>
+  <script type="module" src="/src/layout/inject-sidebar.js"></script>
+  <script type="module" src="/src/main.js"></script>
   </body>
   </html>
