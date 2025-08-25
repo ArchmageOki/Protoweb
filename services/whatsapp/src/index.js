@@ -3,6 +3,8 @@ import qrcode from 'qrcode-terminal';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
+import { EventEmitter } from 'events';
 
 // Compatibilidad CommonJS: desestructurar exports
 const { Client, LocalAuth, MessageMedia } = whatsappPkg;
@@ -61,8 +63,9 @@ async function createOrGetClient(phone, opts = {}) {
   phone = phone.replace(/[^0-9]/g, '');
   if (!phone) throw new Error('Número inválido');
   const existing = clients.get(phone);
-  if (existing?.state && existing.state !== 'disconnected' && existing.state !== 'auth_failure' && !opts.forceReset) return existing;
-  if (existing && (existing.state === 'disconnected' || existing.state === 'auth_failure' || opts.forceReset)) {
+  const REUSABLE_STATES = new Set(['idle','pairing','qr','ready','initializing']);
+  if (existing?.state && REUSABLE_STATES.has(existing.state) && !opts.forceReset) return existing;
+  if (existing && (!REUSABLE_STATES.has(existing.state) || opts.forceReset)) {
     try { await existing.client?.destroy(); } catch {}
     await cleanSession(phone);
     clients.delete(phone);
@@ -72,7 +75,7 @@ async function createOrGetClient(phone, opts = {}) {
   // Headless false por defecto (a menos que WHATSAPP_HEADLESS=1 o se pase en opts)
   const headless = (typeof opts.headless === 'boolean') ? opts.headless : (process.env.WHATSAPP_HEADLESS === '1');
   // Entrada inicial
-  const entry = { state: 'idle', qr: null, phone, client: null, mode: 'qr' };
+  const entry = { state: 'idle', qr: null, phone, client: null, mode: 'qr', bus: new EventEmitter(), streams: new Set() };
   clients.set(phone, entry);
 
   const authStrategy = new LocalAuth({ clientId: phone });
@@ -115,14 +118,34 @@ async function createOrGetClient(phone, opts = {}) {
     c.on('authenticated', () => { console.log('[whatsapp]', phone, 'AUTHENTICATED'); });
     c.on('auth_failure', (m) => { entry.state = 'auth_failure'; console.error('[whatsapp]', phone, 'AUTH FAILURE', m); });
     c.on('disconnected', async (reason) => {
-      entry.state = 'disconnected';
       console.warn('[whatsapp]', phone, 'DISCONNECTED', reason);
+      entry.state = 'disconnected';
       try { await entry.client?.destroy(); } catch {}
       await cleanSession(phone);
-      // Marcamos para permitir nuevo pairing inmediato
-      entry.state = 'cleaned';
+      // Auto re-init: pequeño retardo para evitar loops rápidos
+      setTimeout(async ()=>{
+        if(entry.state !== 'disconnected') return; // ya cambiado quizá por reset manual
+        console.log('[whatsapp]', phone, 'Intentando auto reinicialización tras disconnect');
+        try {
+          const newEntry = await createOrGetClient(phone, { headless: true, forceReset: false });
+          console.log('[whatsapp]', phone, 'Auto reinicio lanzado, estado:', newEntry.state);
+        } catch(e){ console.error('[whatsapp]', phone, 'Fallo auto reinicio:', e.message||e); }
+      }, 3000);
     });
-    c.on('message', async (msg) => { if (msg.body?.toLowerCase() === 'ping') await msg.reply('pong'); });
+    c.on('message', async (msg) => {
+      if (msg.body?.toLowerCase() === 'ping') await msg.reply('pong');
+      // Emitir actualización de chat y mensaje nuevo (solo si no es nuestro para evitar duplicar optimistas)
+      try {
+        const chat = await msg.getChat();
+        const summary = buildChatSummary(chat);
+        if(summary){
+          entry.bus.emit('chat_update', summary);
+          if(!msg.fromMe){
+            entry.bus.emit('message_new', { chatId: summary.id, message: simplifyMessage(msg) });
+          }
+        }
+      } catch {}
+    });
   }
 
   let client;
@@ -150,7 +173,13 @@ async function createOrGetClient(phone, opts = {}) {
 
 // Servidor HTTP
 const app = express();
-app.use(express.json());
+// Límite ampliado para permitir payloads base64 de imágenes/documentos.
+// Configurable vía WHATSAPP_JSON_LIMIT (ej: '25mb')
+// Nota: PDFs y otros documentos crecen ~33% al codificarse en base64. Ajusta según tus necesidades.
+const JSON_LIMIT = process.env.WHATSAPP_JSON_LIMIT || '50mb';
+app.use(express.json({ limit: JSON_LIMIT }));
+// Multer para multipart (archivos grandes sin inflar base64 innecesariamente)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: (parseInt(process.env.WHATSAPP_MEDIA_MAX_MB||'45') * 1024 * 1024) } });
 
 // CORS mínimo para desarrollo
 app.use((req,res,next)=>{ res.setHeader('Access-Control-Allow-Origin','*'); res.setHeader('Access-Control-Allow-Methods','GET,POST,DELETE,OPTIONS'); res.setHeader('Access-Control-Allow-Headers','Content-Type'); if(req.method==='OPTIONS') return res.end(); next(); });
@@ -227,13 +256,75 @@ app.post('/whatsapp/send', async (req,res)=>{
   }
 });
 
+// Cache simple en memoria para avatares: phone -> { chatId: { ts, dataUrl } }
+const avatarCache = new Map();
+
+// Obtener avatar (profile picture) de un chat/contacto. Devuelve dataURL base64.
+app.get('/whatsapp/chat-avatar', async (req,res)=>{
+  try {
+    const phone = (req.query.phone||'').toString().replace(/[^0-9]/g,'');
+    const chatId = (req.query.chatId||'').toString();
+    if(!phone || !chatId) return res.status(400).json({ error: 'phone y chatId requeridos' });
+    const entry = clients.get(phone);
+    if(!entry) return res.status(404).json({ error: 'no existe cliente' });
+    if(entry.state !== 'ready') return res.status(409).json({ error: 'cliente no listo', state: entry.state });
+    // Cache por 10 minutos
+    const TEN_MIN = 10*60*1000;
+    let phoneCache = avatarCache.get(phone);
+    if(!phoneCache){ phoneCache = {}; avatarCache.set(phone, phoneCache); }
+    const cached = phoneCache[chatId];
+    if(cached && (Date.now() - cached.ts) < TEN_MIN){
+      return res.json({ chatId, avatar: cached.dataUrl, cached: true });
+    }
+    let url;
+    try {
+      // whatsapp-web.js permite client.getProfilePicUrl(jid)
+      url = await entry.client.getProfilePicUrl(chatId);
+    } catch(e){ /* puede fallar si no hay foto */ }
+    if(!url){
+      // Sin avatar, devolver placeholder nulo
+      return res.json({ chatId, avatar: null });
+    }
+    // Descargar y convertir a base64
+    const controller = new AbortController();
+    const timeout = setTimeout(()=>controller.abort(), 15000);
+    let resp;
+    try {
+      resp = await fetch(url, { signal: controller.signal });
+    } catch(e){
+      clearTimeout(timeout);
+      return res.json({ chatId, avatar: null });
+    }
+    clearTimeout(timeout);
+    if(!resp.ok){ return res.json({ chatId, avatar: null }); }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const mime = resp.headers.get('content-type') || 'image/jpeg';
+    const b64 = buffer.toString('base64');
+    const dataUrl = `data:${mime};base64,${b64}`;
+    phoneCache[chatId] = { ts: Date.now(), dataUrl };
+    res.json({ chatId, avatar: dataUrl });
+  } catch(e){
+    res.status(500).json({ error: e.message || 'falló avatar' });
+  }
+});
+
 // Enviar media (imagen/documento) con caption opcional
 app.post('/whatsapp/send-media', async (req,res)=>{
   try {
-    const { phone, to, filename, mimetype, data, caption } = req.body || {};
+  const { phone, to, filename, mimetype, data, caption } = req.body || {};
     if(!phone || !to || !filename || !mimetype || !data) return res.status(400).json({ error: 'phone, to, filename, mimetype, data requeridos' });
     const entry = clients.get(String(phone));
     if(!entry || entry.state !== 'ready') return res.status(409).json({ error: 'cliente no listo' });
+    // Validación de tamaño (aprox). data es base64 -> calcular bytes reales
+    const mediaMaxMB = parseInt(process.env.WHATSAPP_MEDIA_MAX_MB || '45');
+    try {
+      const bytes = Buffer.byteLength(data, 'base64');
+      const mb = bytes / (1024*1024);
+      console.log('[whatsapp]', phone, 'upload media', { filename, mimetype, sizeMB: mb.toFixed(2) });
+      if (mb > mediaMaxMB) {
+        return res.status(413).json({ error: 'archivo demasiado grande', maxMB: mediaMaxMB, sizeMB: mb.toFixed(2) });
+      }
+    } catch {}
     const jid = to.includes('@c.us') ? to : to.replace(/[^0-9]/g,'') + '@c.us';
     const media = new MessageMedia(mimetype, data, filename);
     await entry.client.sendMessage(jid, media, { caption: caption || '' });
@@ -241,6 +332,113 @@ app.post('/whatsapp/send-media', async (req,res)=>{
   } catch(e){
     res.status(500).json({ error: e.message || 'falló envío media' });
   }
+});
+
+// Variante multipart para envíos con barra de progreso en frontend
+app.post('/whatsapp/send-media-mp', upload.single('file'), async (req,res)=>{
+  try {
+    const { phone, to, caption } = req.body || {};
+    if(!phone || !to || !req.file) return res.status(400).json({ error: 'phone, to, file requeridos' });
+    const entry = clients.get(String(phone));
+    if(!entry || entry.state !== 'ready') return res.status(409).json({ error: 'cliente no listo' });
+    const jid = to.includes('@c.us') ? to : to.replace(/[^0-9]/g,'') + '@c.us';
+    const b64 = req.file.buffer.toString('base64');
+    const media = new MessageMedia(req.file.mimetype, b64, req.file.originalname);
+    await entry.client.sendMessage(jid, media, { caption: caption || '' });
+    res.json({ ok: true, filename: req.file.originalname, size: req.file.size });
+  } catch(e){
+    res.status(500).json({ error: e.message || 'falló envío media multipart' });
+  }
+});
+
+// Utilidades para formar datos consistentes
+function buildChatSummary(c){
+  const sid = c.id?._serialized || '';
+  const server = c.id?.server || '';
+  if (sid === 'status@broadcast') return null; // estados
+  if (server === 'broadcast') return null; // listas difusión
+  if (c.isStatus) return null;
+  return {
+    id: c.id?._serialized,
+    name: c.name || c.pushname || c.id?.user,
+    isGroup: !!c.isGroup,
+    unreadCount: c.unreadCount || 0,
+    lastMessage: c.lastMessage ? {
+      id: c.lastMessage.id?.id,
+      fromMe: c.lastMessage.fromMe,
+      body: c.lastMessage.body?.slice(0,200) || '',
+      timestamp: c.lastMessage.timestamp
+    } : null
+  };
+}
+
+function simplifyMessage(m){
+  let displayBody;
+  // Para conservar caption en media: usar caption si existe, si no fallback a body (en imágenes body suele contener caption)
+  if(m.type === 'chat') displayBody = m.body || '';
+  else if(m.type === 'image') displayBody = m.caption || m.body || '';
+  else if(m.type === 'document') {
+    // Mostrar filename; el caption se enviará aparte (campo caption) y el frontend lo añadirá debajo
+    displayBody = m.filename || '[documento]';
+  } else displayBody = `[${m.type}]`;
+  return {
+    id: m.id?.id,
+    fromMe: m.fromMe,
+    author: m.author || null,
+    timestamp: m.timestamp,
+    type: m.type,
+    body: displayBody,
+    caption: m.caption || null,
+    hasMedia: !!m.hasMedia,
+    mimetype: m.mimetype || null,
+    filename: m.filename || null,
+    filesize: m.filesize || null
+  };
+}
+
+// Endpoint SSE para eventos en tiempo real
+app.get('/whatsapp/events', (req,res)=>{
+  const phone = (req.query.phone||'').toString().replace(/[^0-9]/g,'');
+  if(!phone) return res.status(400).json({ error: 'phone requerido' });
+  const entry = clients.get(phone);
+  if(!entry) return res.status(404).json({ error: 'no existe cliente' });
+  if(entry.state !== 'ready') return res.status(409).json({ error: 'cliente no listo', state: entry.state });
+  res.setHeader('Content-Type','text/event-stream');
+  res.setHeader('Cache-Control','no-cache');
+  res.setHeader('Connection','keep-alive');
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.flushHeaders?.();
+
+  function send(evt, data){
+    try { res.write(`event: ${evt}\n`+`data: ${JSON.stringify(data)}\n\n`); } catch {}
+  }
+
+  // Registrar listeners
+  const onChatUpdate = (summary)=> send('chat_update', summary);
+  const onMessageNew = (payload)=> send('message_new', payload);
+  entry.bus.on('chat_update', onChatUpdate);
+  entry.bus.on('message_new', onMessageNew);
+  entry.streams.add(res);
+
+  // Enviar lista inicial
+  (async ()=>{
+    try {
+      const chats = await entry.client.getChats();
+      const data = chats
+        .sort((a,b)=> (b.lastMessage?.timestamp||0)-(a.lastMessage?.timestamp||0))
+        .slice(0,200)
+        .map(buildChatSummary)
+        .filter(Boolean);
+      send('chat_list', { chats: data });
+    } catch {}
+  })();
+
+  req.on('close', ()=>{
+    entry.bus.off('chat_update', onChatUpdate);
+    entry.bus.off('message_new', onMessageNew);
+    entry.streams.delete(res);
+    try { res.end(); } catch {}
+  });
 });
 
 // Listado de chats recientes
@@ -264,18 +462,7 @@ app.get('/whatsapp/chats', async (req,res)=>{
       const tb = b.lastMessage?.timestamp || 0;
       return tb - ta;
     });
-    const data = chats.slice(0, limit).map(c => ({
-      id: c.id?._serialized,
-      name: c.name || c.pushname || c.id?.user,
-      isGroup: !!c.isGroup,
-      unreadCount: c.unreadCount || 0,
-      lastMessage: c.lastMessage ? {
-        id: c.lastMessage.id?.id,
-        fromMe: c.lastMessage.fromMe,
-        body: c.lastMessage.body?.slice(0,200) || '',
-        timestamp: c.lastMessage.timestamp
-      } : null
-    }));
+  const data = chats.slice(0, limit).map(buildChatSummary).filter(Boolean);
   console.log('[whatsapp]', phone, 'GET /whatsapp/chats ->', data.length);
   res.json({ phone, chats: data, empty: !data.length });
   } catch(e){
@@ -297,7 +484,8 @@ app.get('/whatsapp/messages', async (req,res)=>{
     let chat;
     try { chat = await entry.client.getChatById(chatId); } catch { return res.status(404).json({ error: 'chat no encontrado' }); }
     // Para paginación hacia atrás: ampliar progresivamente el fetch hasta tener mensajes más antiguos que beforeTs
-    let fetchSize = beforeTs ? Math.min(limit * 4, 500) : Math.min(limit + 20, 300);
+  // fetchSize reducido para primera carga (solo lo solicitado) para mejorar latencia
+  let fetchSize = beforeTs ? Math.min(limit * 4, 500) : limit;
     const MAX_FETCH = 2000; // salvaguarda
     let raw = await chat.fetchMessages({ limit: fetchSize });
     // Si necesitamos mensajes más antiguos que beforeTs y no aparecen, aumentar ventana
@@ -319,17 +507,40 @@ app.get('/whatsapp/messages', async (req,res)=>{
     const slice = filtered.slice(0, limit);
     const hasMore = filtered.length > slice.length; // quedan aún más antiguos
     slice.sort((a,b)=> (a.timestamp||0) - (b.timestamp||0));
-    const data = slice.map(m => ({
-      id: m.id?.id,
-      fromMe: m.fromMe,
-      author: m.author || null,
-      timestamp: m.timestamp,
-      type: m.type,
-      body: (m.type === 'chat' ? (m.body||'') : `[${m.type}]`)
-    }));
+    const data = slice.map(simplifyMessage);
     res.json({ phone, chatId, messages: data, hasMore, oldestTs: data.length ? data[0].timestamp : null });
   } catch(e){
     res.status(500).json({ error: e.message || 'falló historial mensajes' });
+  }
+});
+
+// Descargar media de un mensaje (base64)
+app.get('/whatsapp/message-media', async (req,res)=>{
+  try {
+    const phone = (req.query.phone||'').toString().replace(/[^0-9]/g,'');
+    const chatId = (req.query.chatId||'').toString();
+    const messageId = (req.query.messageId||'').toString();
+    if(!phone || !chatId || !messageId) return res.status(400).json({ error: 'phone, chatId, messageId requeridos' });
+    const entry = clients.get(phone);
+    if(!entry) return res.status(404).json({ error: 'no existe cliente' });
+    if(entry.state !== 'ready') return res.status(409).json({ error: 'cliente no listo', state: entry.state });
+    let chat; try { chat = await entry.client.getChatById(chatId); } catch { return res.status(404).json({ error: 'chat no encontrado' }); }
+    // Buscar el mensaje (búsqueda incremental)
+    let batchSize = 50; let found = null; let safety = 0;
+    while(!found && safety < 5){
+      const msgs = await chat.fetchMessages({ limit: batchSize });
+      found = msgs.find(m => m.id?.id === messageId);
+      if(found || msgs.length < batchSize) break;
+      batchSize *= 2; safety++;
+    }
+    if(!found) return res.status(404).json({ error: 'mensaje no encontrado' });
+    if(!found.hasMedia) return res.status(400).json({ error: 'mensaje sin media' });
+    let media;
+    try { media = await found.downloadMedia(); } catch(e){ return res.status(500).json({ error: 'no se pudo descargar media' }); }
+    // media: { data (base64), mimetype, filename }
+    res.json({ mimetype: media.mimetype, filename: media.filename || found.filename || null, data: media.data });
+  } catch(e){
+    res.status(500).json({ error: e.message || 'falló obtener media' });
   }
 });
 

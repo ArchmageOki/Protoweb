@@ -1,3 +1,2 @@
-2025/08/24-16:35:52.396 5714 Reusing MANIFEST D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Service Worker\Database/MANIFEST-000001
-2025/08/24-16:35:52.396 5714 Recovering log #3
-2025/08/24-16:35:52.396 5714 Reusing old log D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Service Worker\Database/000003.log 
+2025/08/25-12:26:30.744 150c Creating DB D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Service Worker\Database since it was missing.
+2025/08/25-12:26:30.747 150c Reusing MANIFEST D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Service Worker\Database/MANIFEST-000001

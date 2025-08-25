@@ -1,3 +1,2 @@
-2025/08/24-16:35:52.391 5714 Reusing MANIFEST D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Local Storage\leveldb/MANIFEST-000001
-2025/08/24-16:35:52.391 5714 Recovering log #3
-2025/08/24-16:35:52.391 5714 Reusing old log D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Local Storage\leveldb/000003.log 
+2025/08/25-12:26:29.946 8b6c Creating DB D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Local Storage\leveldb since it was missing.
+2025/08/25-12:26:29.949 8b6c Reusing MANIFEST D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-34628836603\Default\Local Storage\leveldb/MANIFEST-000001
