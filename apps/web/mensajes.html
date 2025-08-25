@@ -5,13 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TailAdmin — Mensajes</title>
-  <link rel="stylesheet" href="/src/style.css">
   </head>
   <body class="bg-gray-50 text-slate-800">
     <div id="app" class="min-h-screen flex">
       <!-- Sidebar se inyecta dinámicamente -->
-      <div class="flex-1 main-wrapper lg:ml-64 flex flex-col h-screen overflow-hidden">
-        <header class="shrink-0 bg-white border-b border-slate-200">
+      <div class="flex-1 main-wrapper lg:ml-64 flex flex-col min-h-screen">
+        <header class="sticky top-0 z-30 bg-white border-b border-slate-200">
           <div class="flex items-center gap-2 p-4">
             <button id="sidebarOpen" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Abrir menú">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
@@ -24,118 +23,15 @@
             </div>
           </div>
         </header>
-
-        <main class="flex-1 overflow-hidden p-4">
-          <section class="h-full flex flex-col rounded-lg border border-slate-200 bg-white p-4 overflow-hidden">
-            <div class="flex gap-6 flex-1 min-h-0 overflow-hidden">
-              <div class="flex flex-col gap-4 basis-[25%] min-w-[220px] min-h-0">
-                <div class="flex flex-col flex-1 min-h-0">
-                  <ul id="mensajes-conversaciones" class="flex-1 text-sm divide-y divide-slate-200 overflow-auto border border-slate-200 rounded-md bg-white min-h-0">
-                    <!-- Conversaciones dinámicas -->
-                    <li class="p-3 text-slate-500 text-xs">(Vacío)</li>
-                  </ul>
-                </div>
-                <div>
-                  <h3 class="text-sm font-medium text-slate-700 mb-2">Plantillas</h3>
-                  <ul id="mensajes-plantillas" class="text-sm divide-y divide-slate-200 overflow-auto border border-slate-200 rounded-md bg-white max-h-56">
-                    <li class="p-3 text-slate-500 text-xs">(Sin plantillas)</li>
-                  </ul>
-                  <button id="plantilla-add" class="mt-2 inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-3 py-1.5 text-xs hover:bg-slate-800">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.5v15m7.5-7.5h-15"/></svg>
-                    Nueva plantilla
-                  </button>
-                </div>
-              </div>
-              <div class="flex flex-col gap-4 basis-[75%] min-w-[320px] min-h-0">
-                <div class="border border-slate-200 rounded-md overflow-hidden flex flex-col flex-1 min-h-0 relative">
-                  <div id="mensajes-chat-header" class="flex gap-2 p-2 bg-white border-b border-slate-200">
-                    <div class="flex items-center gap-2 p-2 rounded-md border border-slate-200 bg-slate-50 w-48" id="chat-header-main">
-                      <div class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-[10px] text-slate-500 overflow-hidden" id="chat-header-avatar"><span>?</span></div>
-                      <div class="flex-1 min-w-0">
-                        <div id="chat-header-name" class="text-sm font-medium text-slate-700 truncate">Contacto</div>
-                        <div id="chat-header-meta" class="text-[10px] text-slate-500 truncate">—</div>
-                      </div>
-                    </div>
-                    <div class="p-2 rounded-md border border-slate-200 bg-slate-50 w-48"></div>
-                    <div class="p-2 rounded-md border border-slate-200 bg-slate-50 w-48"></div>
-                    <div class="p-2 rounded-md border border-slate-200 bg-slate-50 w-48"></div>
-                  </div>
-                  <div id="mensajes-chat-log" class="flex-1 min-h-0 overflow-auto p-3 space-y-3 bg-slate-50 text-sm">
-                    <div class="text-center text-xs text-slate-500">Selecciona una conversación</div>
-                  </div>
-                  <form id="mensajes-chat-form" class="border-t border-slate-200 p-3 flex gap-2 items-center relative">
-                    <div class="flex items-center gap-2">
-                      <button type="button" id="btn-emoji" class="w-10 h-10 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xl" title="Emoji" aria-haspopup="true" aria-expanded="false">
-                        😊
-                      </button>
-                      <div class="relative">
-                        <input type="file" id="file-input" class="hidden" />
-                        <button type="button" id="btn-attach" class="w-10 h-10 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white hover:bg-slate-100" title="Adjuntar">
-                          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94a3 3 0 0 1 4.243 4.243L8.93 18.688a1.5 1.5 0 0 1-2.122-2.122l8.487-8.488"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                    <textarea id="mensaje-input" rows="1" placeholder="Escribe un mensaje..." class="flex-1 h-10 max-h-40 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 leading-snug overflow-y-auto"></textarea>
-                    <button type="submit" class="h-10 inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 text-sm hover:bg-slate-800 disabled:opacity-50" disabled>
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.5 12h15m0 0-6-6m6 6-6 6"/></svg>
-                      Enviar
-                    </button>
-                    <div id="emoji-picker" class="hidden absolute bottom-14 left-0 w-96 h-80 bg-white border border-slate-300 rounded-lg shadow-lg overflow-hidden"></div>
-                    <div id="attachment-preview" class="hidden absolute -top-24 left-0 right-0 mx-3 bg-white border border-slate-300 rounded-md shadow p-2 flex items-center gap-3">
-                      <div class="w-14 h-14 bg-slate-100 rounded overflow-hidden flex items-center justify-center" id="attachment-thumb"><span class="text-xs text-slate-500">Prev</span></div>
-                      <div class="flex-1">
-                        <div class="text-xs font-medium" id="attachment-name"></div>
-                        <div class="text-[10px] text-slate-500" id="attachment-size"></div>
-                        <div id="upload-progress" class="mt-1 hidden">
-                          <div class="h-1 bg-slate-200 rounded overflow-hidden">
-                            <div id="upload-progress-bar" class="h-full w-0 bg-green-600 transition-all"></div>
-                          </div>
-                          <div class="text-[10px] text-slate-500 mt-0.5"><span id="upload-progress-text">0%</span></div>
-                        </div>
-                      </div>
-                      <button type="button" id="attachment-remove" class="w-8 h-8 inline-flex items-center justify-center rounded-md border border-slate-300 text-slate-500 hover:bg-slate-100" title="Cancelar">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18 18 6M6 6l12 12"/></svg>
-                      </button>
-                    </div>
-                  </form>
-                  <button id="mensajes-scroll-bottom" class="hidden absolute bottom-20 right-4 bg-white/90 backdrop-blur border border-slate-300 shadow-sm rounded-full px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white transition" type="button">Ir al final</button>
-                </div>
-                <details class="text-[10px] text-slate-500 select-text flex-none">
-                  <summary class="cursor-pointer">Debug</summary>
-                  <pre id="debug-pane" class="max-h-40 overflow-auto whitespace-pre-wrap"></pre>
-                </details>
-                <div class="grid gap-4 md:grid-cols-2 flex-none">
-                  <div class="border border-slate-200 rounded-md p-4">
-                    <h3 class="text-sm font-medium text-slate-700 mb-2">Detalle contacto</h3>
-                    <div id="mensajes-contacto-detalle" class="text-xs text-slate-500">Ningún contacto seleccionado.</div>
-                  </div>
-                  <div class="border border-slate-200 rounded-md p-4">
-                    <h3 class="text-sm font-medium text-slate-700 mb-2">Historial envío</h3>
-                    <ul id="mensajes-historial" class="text-xs text-slate-500 space-y-1 max-h-48 overflow-auto">
-                      <li>(Vacío)</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+        <main class="flex-1 p-6">
+          <!-- Contenido futuro del módulo de campañas / recordatorios -->
+          <div class="rounded-lg border border-dashed border-slate-300 bg-white/50 p-8 text-center text-sm text-slate-500">
+            Solo estructura: barra lateral + cabecera. Aquí irá el constructor de campañas / recordatorios.
+          </div>
         </main>
       </div>
     </div>
-
-    <!-- Visor de media -->
-    <div id="media-viewer" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="relative max-w-full max-h-full">
-        <button id="media-close" class="absolute -top-10 right-0 text-white/80 hover:text-white text-sm">Cerrar (Esc)</button>
-        <a id="media-download" download class="absolute -top-10 left-0 text-white/80 hover:text-white text-sm" target="_blank">Descargar</a>
-        <img id="media-image" class="max-w-[90vw] max-h-[80vh] object-contain rounded shadow-lg" alt="media" />
-        <iframe id="media-pdf" class="hidden bg-white rounded shadow-lg w-[80vw] h-[80vh]" title="PDF" frameborder="0"></iframe>
-      </div>
-    </div>
-
-  <script type="module" src="/src/layout/inject-sidebar.js"></script>
-  <script type="module" src="/src/main.js"></script>
-  <script type="module" src="/src/whatsapp-status.js"></script>
-  <script type="module" src="/src/mensajes-whatsapp.js"></script>
+    <script type="module" src="/src/layout/inject-sidebar.js"></script>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

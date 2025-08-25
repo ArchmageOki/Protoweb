@@ -314,8 +314,8 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 .clients-table { width:100%; }
 .clientes-filter-input { background:#ffffff !important; }
 .clientes-filter-input:focus { background:#ffffff !important; }
-.cliente-phone-link { color:#128C7E; /* tono principal WhatsApp dark */ }
-.cliente-phone-link:hover { color:#25D366; }
+.cliente-phone-link { color:#0f766e; /* color verde neutro (antes WhatsApp) */ }
+.cliente-phone-link:hover { color:#0d9488; }
 /* Instagram: degradado aplicado al texto usando background-clip */
 .cliente-ig-link { color:#E1306C; }
 .cliente-ig-link:hover { color:#ff4685; }

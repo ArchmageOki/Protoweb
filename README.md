@@ -7,7 +7,6 @@ apps/
   web/            # Frontend Vite + Tailwind
 services/
   api/            # Backend principal (DB + lógica)
-  whatsapp/       # Servicio WhatsApp (whatsapp-web.js)
 packages/
   shared/         # Librerías compartidas (tipos/utilidades)
 infra/
@@ -19,26 +18,24 @@ docs/
 Comandos útiles:
 
 - Iniciar frontend: `npm run dev:web`
-- Iniciar servicio WhatsApp: `npm run dev:whatsapp`
 - Construir frontend: `npm run build:web`
 - Preview frontend: `npm run preview:web`
 
 Workspaces: se gestionan desde el `package.json` raíz.
 
-## Servicio WhatsApp
+## Módulo de Mensajes (en construcción)
 
-Se basa en `whatsapp-web.js` con `LocalAuth` para persistir la sesión bajo `services/whatsapp/.wwebjs_auth`.
+El antiguo servicio de integración WhatsApp ha sido retirado. El nuevo enfoque se centra en:
 
-Arranque:
+- Plantillas reutilizables de texto (con variables).
+- Programación de campañas / recordatorios (one-shot y recurrentes).
+- Historial de envíos y métricas básicas (estado, entregado, errores).
+- Futuro: soportar múltiples canales (email/SMS) según prioridad.
 
-```
-npm run dev:whatsapp
-```
+Estructura actual: sólo la página `mensajes.html` con layout base. Próximos pasos (propuestos):
 
-Primer inicio mostrará un QR en consola. Escanéalo con la app móvil. Envía "ping" desde un chat para recibir "pong" como prueba.
-
-Integración futura (ideas):
-
-- Exponer REST/websocket para que `apps/web` consuma estado de conversaciones.
-- Persistir mensajes en el servicio `api` (cuando exista DB) en lugar de memoria.
-- Gestión de plantillas y envío masivo desde Ajustes/Mensajes en el frontend.
+1. Definir esquema de plantilla (id, nombre, body, variables, updatedAt).
+2. Endpoint CRUD plantillas (`/api/templates`).
+3. Modelo de campaña (id, templateId, segmento, schedule, estado).
+4. Worker / scheduler simple en `services/api` para ejecutar campañas pendientes.
+5. UI inicial: lista de plantillas y creación de campaña.
