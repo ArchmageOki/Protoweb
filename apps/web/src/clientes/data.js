@@ -21,7 +21,8 @@ function mapApiToCliente(r){
     dineroTotal: r.total_amount != null ? Number(r.total_amount) : 0,
     ultimaCita: ultima,
     citas: [], // pendiente: cargar citas reales cuando exista endpoint
-    notas: r.notes || ''
+  notas: r.notes || '',
+  vip: !!r.is_vip
   }
 }
 
@@ -42,7 +43,11 @@ export async function cargarClientes(){
 
 export async function crearCliente(payload){
   const r = await authFetch(apiBase + '/data/clients', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-  if(!r.ok) throw new Error('create_failed')
+  if(!r.ok){
+    let err
+    try { err = await r.json() } catch { err = { error:'create_failed' } }
+    const e = new Error(err.error||'create_failed'); e.code = err.error; e.field = err.field; e.status = r.status; throw e
+  }
   const data = await r.json()
   const cli = mapApiToCliente(data.item)
   clientes.unshift(cli)
@@ -51,7 +56,11 @@ export async function crearCliente(payload){
 
 export async function actualizarCliente(id, payload){
   const r = await authFetch(apiBase + '/data/clients/'+encodeURIComponent(id), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-  if(!r.ok) throw new Error('update_failed')
+  if(!r.ok){
+    let err
+    try { err = await r.json() } catch { err = { error:'update_failed' } }
+    const e = new Error(err.error||'update_failed'); e.code = err.error; e.field = err.field; e.status = r.status; throw e
+  }
   const data = await r.json()
   const cli = mapApiToCliente(data.item)
   const idx = clientes.findIndex(c=>c.id===id)

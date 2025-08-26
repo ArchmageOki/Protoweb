@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/src/style.css" />
     <title>TailAdmin — Calendario Mensual</title>
   </head>
   <body class="bg-gray-50 text-slate-800">
@@ -15,7 +16,11 @@
             <button id="sidebarOpen" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Abrir menú">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
             </button>
-            <h1 class="text-lg font-semibold">Calendario mensual</h1>
+            <h1 class="text-lg font-semibold flex items-center gap-4">Calendario mensual
+              <span id="google-cal-status" class="text-xs font-normal px-2 py-1 rounded bg-slate-100 text-slate-600 hidden"></span>
+              <button id="google-cal-sync" class="hidden text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100" title="Forzar sincronización">Sync</button>
+              <button id="google-cal-reauth-inline" class="hidden text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-700 hover:bg-indigo-50" title="Reautorizar permisos">Reautorizar</button>
+            </h1>
             <div class="ml-auto flex items-center gap-3">
               <div class="hidden sm:block">
                 <input type="text" placeholder="Buscar..." class="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
@@ -66,9 +71,9 @@
                   <div class="grid gap-1 min-w-0">
                     <label for="evt-inicio" class="text-sm font-medium">Hora de inicio</label>
                     <div class="relative">
-                      <input id="evt-inicio" type="hidden" value="09:00" />
+                      <input id="evt-inicio" type="hidden" value="10:00" />
                       <button type="button" data-time-display="evt-inicio" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 flex items-center justify-between bg-white">
-                        <span class="time-value font-mono">09:00</span>
+                        <span class="time-value font-mono">10:00</span>
                         <svg class="size-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="1.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 7v5l3 2"/></svg>
                       </button>
                       <div data-time-popover="evt-inicio" class="time-popover hidden absolute z-50 mt-1 w-full rounded-md border border-slate-300 bg-white p-2 shadow-lg">
@@ -91,9 +96,9 @@
                   <div class="grid gap-1 min-w-0">
                     <label for="evt-fin" class="text-sm font-medium">Hora de fin</label>
                     <div class="relative">
-                      <input id="evt-fin" type="hidden" value="10:00" />
+                      <input id="evt-fin" type="hidden" value="11:00" />
                       <button type="button" data-time-display="evt-fin" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 flex items-center justify-between bg-white">
-                        <span class="time-value font-mono">10:00</span>
+                        <span class="time-value font-mono">11:00</span>
                         <svg class="size-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="1.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 7v5l3 2"/></svg>
                       </button>
                       <div data-time-popover="evt-fin" class="time-popover hidden absolute z-50 mt-1 w-full rounded-md border border-slate-300 bg-white p-2 shadow-lg">
@@ -113,6 +118,7 @@
                     </div>
                   </div>
                 </div>
+                <p id="time-error" class="text-xs text-red-600 mt-1 hidden">La hora de fin debe ser posterior a la hora de inicio.</p>
                 <div class="grid grid-cols-2 gap-4">
                   <div class="grid gap-1 min-w-0">
                     <label for="evt-precio-total" class="text-sm font-medium">Precio total (€)</label>
@@ -132,9 +138,13 @@
                   <label for="evt-diseno-terminado" class="text-sm font-medium select-none">Diseño terminado</label>
                 </div>
                 <div>
-                  <div class="flex gap-2 form-actions">
-                    <button id="evt-save" type="button" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800">Guardar</button>
-                    <button id="evt-reset" type="button" class="inline-flex items-center gap-2 rounded-md border border-slate-300 text-slate-700 px-4 py-2 text-sm hover:bg-slate-100">Limpiar</button>
+                  <div class="flex gap-2 items-center form-actions">
+                    <button id="evt-save" type="button" class="inline-flex items-center gap-2 rounded-md bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800">
+                      <span>Guardar</span>
+                    </button>
+                    <span id="save-indicator" class="inline-flex items-center justify-center text-green-600 opacity-0 transition-opacity duration-300" aria-label="Guardado correctamente">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </span>
                     <button id="evt-delete" type="button" class="hidden ml-auto inline-flex items-center gap-2 rounded-md border border-red-300 text-red-700 px-4 py-2 text-sm hover:bg-red-50" title="Eliminar evento seleccionado">
                       <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.74 9l-.346 9m-4.788 0L9.26 9M9.75 4.5h4.5m-8.25 2.25h12M5.25 6.75 6 19.125A2.25 2.25 0 0 0 8.243 21h7.514A2.25 2.25 0 0 0 18 19.125L18.75 6.75"/></svg>
                       <span>Eliminar</span>
@@ -153,6 +163,57 @@
   <script type="module" src="/src/main.js"></script>
   <script type="module" src="/src/month.js"></script>
   <script type="module" src="/src/user-menu.js"></script>
+  <script type="module" src="/src/google-calendar-ui.js"></script>
+  <script type="module">
+    import { authFetch, apiBase } from '/src/auth.js'
+    (function(){
+      if(!location.search.includes('google_auth=1')) return
+      // Mostrar modal de selección de calendario sólo si el usuario acaba de autenticar y aún no tiene calendar_id escogido diferente de primary
+      const modal = document.createElement('div')
+      modal.id='calendar-pick-once-modal'
+      modal.className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'
+      modal.innerHTML = `
+        <div class="bg-white rounded-md shadow-lg max-w-md w-full p-5 space-y-4">
+          <h3 class="text-sm font-semibold">Selecciona un calendario</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">Elige en qué calendario de tu cuenta de Google se crearán los eventos. Puedes cambiarlo más tarde en Ajustes.</p>
+          <div id="first-cal-list" class="border border-slate-200 rounded max-h-60 overflow-auto divide-y divide-slate-100"></div>
+          <div class="flex justify-end gap-2 pt-2 text-[11px] text-slate-500">
+            Debes seleccionar un calendario para comenzar.
+          </div>
+        </div>`
+      document.body.appendChild(modal)
+      const listBox = modal.querySelector('#first-cal-list')
+  const skipBtn = null
+      async function load(){
+        listBox.innerHTML = '<div class="p-3 text-xs text-slate-500">Cargando calendarios…</div>'
+        try {
+          const r = await authFetch(apiBase + '/data/integrations/google/calendars')
+          if(!r.ok) throw new Error()
+          const j = await r.json()
+          listBox.innerHTML = ''
+          j.items.forEach(cal => {
+            const btn = document.createElement('button')
+            btn.type='button'
+            btn.className='w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2'
+            btn.innerHTML = `<span class="flex-1 truncate">${cal.summary||cal.id}</span>${cal.primary?'<span class="text-[10px] px-1 rounded bg-indigo-100 text-indigo-700">primario</span>':''}`
+            btn.addEventListener('click', async ()=>{
+              btn.disabled=true
+              btn.textContent='Guardando…'
+              try {
+                const r2 = await authFetch(apiBase + '/data/integrations/google/calendar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ calendar_id: cal.id }) })
+                if(!r2.ok) throw new Error()
+                close(); location.reload()
+              } catch { btn.textContent='Error'; setTimeout(()=> load(), 1200) }
+            })
+            listBox.appendChild(btn)
+          })
+        } catch { listBox.innerHTML = '<div class="p-3 text-xs text-red-600">Error cargando calendarios.</div>' }
+      }
+      function close(){ modal.remove(); const url = new URL(location.href); url.searchParams.delete('google_auth'); history.replaceState(null,'',url.toString()) }
+  // sin botón de omitir
+      load()
+    })()
+  </script>
     <script>
       (function(){
         // Hacer que toda la barra de fecha sea táctil (wrapper clicable)
@@ -170,7 +231,9 @@
             }
           }, { passive:true });
         }
-        const ACTIVE = 'bg-slate-900 text-white';
+  // ACTIVE no puede contener espacios para classList.toggle con segundo argumento.
+  const ACTIVE_BG = 'bg-slate-900';
+  const ACTIVE_TEXT = 'text-white';
         function buildHours(list){
           if(list.children.length) return;
           for(let h=0; h<24; h++){
@@ -197,7 +260,22 @@
         function openPopover(id){
           closeAll();
           const pop=document.querySelector(`[data-time-popover="${id}"]`);
-          if(pop){ pop.classList.remove('hidden'); markActive(id); positionPopover(id); }
+          if(pop){
+            pop.classList.remove('hidden');
+            markActive(id);
+            positionPopover(id);
+            // Scroll automático a la hora por defecto (10 inicio / 11 fin) o la seleccionada
+            try {
+              const hourList = pop.querySelector('.time-hours');
+              const hidden = document.getElementById(id);
+              let hSel = hidden?.value?.split(':')[0];
+              if(!hSel){ hSel = id==='evt-inicio' ? '10' : '11'; }
+              const target = hourList?.querySelector(`[data-hour="${hSel}"]`);
+              if(target && hourList){
+                hourList.scrollTop = target.offsetTop - 8;
+              }
+            } catch {}
+          }
         }
         function closeAll(){ document.querySelectorAll('.time-popover').forEach(p=>p.classList.add('hidden')); }
         function markActive(id){
@@ -205,8 +283,16 @@
             const [h,m]=hidden.value.split(':');
             const pop=document.querySelector(`[data-time-popover="${id}"]`);
             if(!pop) return;
-            pop.querySelectorAll('.time-hours [data-hour]').forEach(li=> li.classList.toggle(ACTIVE, li.dataset.hour===h));
-            pop.querySelectorAll('.time-minutes [data-minute]').forEach(li=> li.classList.toggle(ACTIVE, li.dataset.minute===m));
+            pop.querySelectorAll('.time-hours [data-hour]').forEach(li=> {
+              const on = li.dataset.hour===h;
+              li.classList.toggle(ACTIVE_BG, on);
+              li.classList.toggle(ACTIVE_TEXT, on);
+            });
+            pop.querySelectorAll('.time-minutes [data-minute]').forEach(li=> {
+              const on = li.dataset.minute===m;
+              li.classList.toggle(ACTIVE_BG, on);
+              li.classList.toggle(ACTIVE_TEXT, on);
+            });
         }
         function setTime(id,hour,minute,doClose){
           const hidden=document.getElementById(id); if(!hidden) return;

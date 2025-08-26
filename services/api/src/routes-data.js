@@ -6,6 +6,9 @@ import {
   pgCreateEvent, pgListEvents, pgGetEvent, pgUpdateEvent, pgDeleteEvent,
   pgGetWhatsappSession, pgUpsertWhatsappSession
 } from './db/pg.js'
+import { buildAuthUrl, exchangeCode, upsertAccount, getAccount, applySync, createRemoteEvent, patchRemoteEvent, deleteRemoteEvent, validateAndConsumeState, createOauthState, listCalendars, setCalendar } from './integrations/googleCalendar.js'
+import { pool } from './db/pg.js'
+import { pgAttachGoogleEvent, pgUpdateGoogleEtag } from './db/pg.js'
 
 const r = Router()
 
@@ -26,6 +29,7 @@ r.post('/clients', async (req,res)=>{
   const digits = body.mobile.replace(/[^0-9]/g,'')
   if(digits.length < 7 || digits.length > 15) return res.status(400).json({ error:'invalid_mobile' })
   body.mobile = digits
+  if(body.is_vip != null) body.is_vip = !!body.is_vip
   try {
     const row = await pgCreateClient(nanoid(), req.user.id, body)
     res.status(201).json({ ok:true, item: row })
@@ -56,12 +60,18 @@ r.put('/clients/:id', async (req,res)=>{
     if(digits.length < 7 || digits.length > 15) return res.status(400).json({ error:'invalid_mobile' })
     body.mobile = digits
   }
+  if(body.is_vip != null) body.is_vip = !!body.is_vip
   try {
     const row = await pgUpdateClient(req.user.id, req.params.id, body)
     if(!row) return res.status(404).json({ error:'not_found' })
     res.json({ ok:true, item: row })
   } catch(e){
-    res.status(500).json({ error:'update_failed' })
+    let msg='update_failed', field=null
+    if(e.code==='23505'){
+      if(e.detail && e.detail.includes('mobile')){ msg='duplicate_mobile'; field='mobile' }
+      else if(e.detail && e.detail.includes('dni')){ msg='duplicate_dni'; field='dni' }
+    }
+    res.status(400).json({ error: msg, field })
   }
 })
 
@@ -85,6 +95,14 @@ r.post('/events', async (req,res)=>{
   const s = new Date(start_at); const e = new Date(end_at)
   if(isNaN(s) || isNaN(e) || e <= s) return res.status(400).json({ error:'invalid_range' })
   const row = await pgCreateEvent(nanoid(), req.user.id, { title: title.trim(), description, start_at: s.toISOString(), end_at: e.toISOString(), all_day: !!all_day })
+  // Si hay cuenta Google, crear también remoto (async best-effort)
+  getAccount(req.user.id).then(acc=>{
+    if(acc){
+      createRemoteEvent(req.user.id, row).then(googleEv=>{
+        pgAttachGoogleEvent(req.user.id, row.id, googleEv.id, googleEv.etag||null).catch(e=>console.error('[google][attach] fallo', e.message))
+      }).catch(err=> console.error('[google][create] fallo', err.message))
+    }
+  })
   res.status(201).json({ ok:true, item: row })
 })
 
@@ -102,13 +120,115 @@ r.put('/events/:id', async (req,res)=>{
   if(isNaN(s) || isNaN(e) || e <= s) return res.status(400).json({ error:'invalid_range' })
   const row = await pgUpdateEvent(req.user.id, req.params.id, { title: title.trim(), description, start_at: s.toISOString(), end_at: e.toISOString(), all_day: !!all_day })
   if(!row) return res.status(404).json({ error:'not_found' })
+  getAccount(req.user.id).then(acc=>{
+    if(acc && row.google_event_id){
+      patchRemoteEvent(req.user.id, row.google_event_id, row).then(googleEv=>{
+        if(googleEv.etag) pgUpdateGoogleEtag(req.user.id, row.id, googleEv.etag).catch(e=>console.error('[google][etag] fallo', e.message))
+      }).catch(err=> console.error('[google][patch] fallo', err.message))
+    }
+  })
   res.json({ ok:true, item: row })
 })
 
 r.delete('/events/:id', async (req,res)=>{
+  console.log('[events][delete] intento', req.params.id, 'user', req.user.id)
+  const existing = await pgGetEvent(req.user.id, req.params.id)
+  if(!existing) return res.status(404).json({ error:'not_found' })
+  // Intentar borrar remoto primero (best-effort)
+  if(existing.google_event_id){
+    getAccount(req.user.id).then(acc=>{ if(acc){ deleteRemoteEvent(req.user.id, existing.google_event_id).catch(err=> console.error('[google][delete] fallo', err.message)) } })
+  }
   const ok = await pgDeleteEvent(req.user.id, req.params.id)
+  console.log('[events][delete] resultado', ok)
   if(!ok) return res.status(404).json({ error:'not_found' })
   res.json({ ok:true })
+})
+
+// ---- GOOGLE CALENDAR AUTH ----
+r.get('/integrations/google/status', async (req,res)=>{
+  const acc = await getAccount(req.user.id)
+  res.json({ ok:true, connected: !!acc, account: acc ? { calendar_id: acc.calendar_id, expiry: acc.expiry, last_sync_at: acc.last_sync_at, scope: acc.scope, pending: !acc.calendar_id } : null })
+})
+
+r.get('/integrations/google/authurl', (req,res)=>{
+  try {
+    const { scope='events', pkce_challenge } = req.query||{}
+    const state = createOauthState(req.user.id)
+    const url = buildAuthUrl(state, { scope, codeChallenge: pkce_challenge })
+    res.json({ ok:true, url, state })
+  } catch(e){ res.status(400).json({ error:'authurl_failed' }) }
+})
+
+r.post('/integrations/google/callback', async (req,res)=>{
+  const { code, state, code_verifier, calendar_id=null } = req.body||{}
+  if(!code) return res.status(400).json({ error:'missing_code' })
+  if(!validateAndConsumeState(req.user.id, state)) return res.status(400).json({ error:'invalid_state' })
+  try {
+  const data = await exchangeCode(code, { code_verifier })
+  // Guardar cuenta con calendar_id null (placeholder) hasta que el usuario elija
+  await upsertAccount(req.user.id, { ...data, calendar_id: calendar_id || null })
+  res.json({ ok:true, pendingCalendarSelect: true })
+  } catch(e){ res.status(400).json({ error:'oauth_failed' }) }
+})
+
+// Callback alternativo vía GET (si se prefiere redirigir directamente desde Google)
+r.get('/integrations/google/callback', async (req,res)=>{
+  const { code, state } = req.query||{}
+  if(!code) return res.status(400).send('missing_code')
+  if(!validateAndConsumeState(req.user.id, state)) return res.status(400).send('invalid_state')
+  try {
+  const data = await exchangeCode(code)
+  await upsertAccount(req.user.id, { ...data, calendar_id: null })
+  res.redirect('/calendario.html?google_auth=1')
+  } catch(e){ res.status(400).send('oauth_failed') }
+})
+
+r.post('/integrations/google/sync', async (req,res)=>{
+  try {
+    await applySync(req.user.id)
+    res.json({ ok:true })
+  } catch(e){
+  console.error('[google][sync] fallo', e.message)
+  res.status(400).json({ error:'sync_failed', code: e.message })
+  }
+})
+
+// Desconectar y eliminar cuenta Google
+r.delete('/integrations/google/account', async (req,res)=>{
+  try {
+    // Eliminar cuenta
+    await pool.query('delete from google_calendar_accounts where user_id=$1', [req.user.id])
+    // Borrar eventos locales (requisito: eliminarlos de la DB, permanecen en Google)
+    await pool.query('delete from calendar_events where user_id=$1', [req.user.id])
+    res.json({ ok:true, deletedLocal:true })
+  } catch(e){
+    console.error('[google][disconnect] fallo', e.message)
+    res.status(400).json({ error:'disconnect_failed' })
+  }
+})
+
+// Listar calendarios disponibles (requiere cuenta conectada)
+r.get('/integrations/google/calendars', async (req,res)=>{
+  try {
+    const items = await listCalendars(req.user.id)
+    res.json({ ok:true, items })
+  } catch(e){
+    const code = e.status || 400
+    if(e.message==='insufficient_scope'){
+      return res.status(400).json({ error:'insufficient_scope', detail:'El token no incluye permisos para listar calendarios. Reautoriza añadiendo calendar.readonly.', status: code })
+    }
+    res.status(400).json({ error:'calendar_list_failed', detail: e.body?.slice?.(0,300) || e.message, status: code })
+  }
+})
+
+// Seleccionar calendario activo
+r.post('/integrations/google/calendar', async (req,res)=>{
+  const { calendar_id } = req.body||{}
+  if(!calendar_id) return res.status(400).json({ error:'missing_calendar_id' })
+  try {
+    const acc = await setCalendar(req.user.id, calendar_id)
+    res.json({ ok:true, account:{ calendar_id: acc.calendar_id } })
+  } catch(e){ res.status(400).json({ error:'set_calendar_failed' }) }
 })
 
 // ---- WHATSAPP SESSION ----

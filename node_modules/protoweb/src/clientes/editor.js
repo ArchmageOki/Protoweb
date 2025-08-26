@@ -119,7 +119,8 @@ function mountClienteEditor(){
           <div><label>Dinero total</label><input name="dineroTotal" type="text" readonly class="cliente-editor-readonly" /></div>
           <div><label>Última cita</label><input name="ultimaCita" type="date" readonly class="cliente-editor-readonly" /></div>
         </div>
-        <div><label>Notas</label><textarea name="notas"></textarea></div>
+  <div><label>Notas</label><textarea name="notas"></textarea></div>
+  <div class="flex items-center gap-2"><input id="cliente-vip" name="vip" type="checkbox" /><label for="cliente-vip">VIP</label></div>
       </form>
       <div class="cliente-editor-footer"><button type="button" class="btn-secondary" data-ce-cancel>Cancelar</button><button type="submit" form="cliente-editor-form" class="btn-primary">Guardar</button></div>
     </div>`
@@ -178,10 +179,33 @@ function mountClienteEditor(){
     let nacimiento; const rawNac=fd.get('nacimiento')?.toString().trim(); if(rawNac){ if(/^[0-9]{2}\/[0-9]{2}\/[0-9]{4}$/.test(rawNac)) nacimiento = parseDisplayDate(rawNac) || cli?.nacimiento || null; else nacimiento = new Date(rawNac); if(isNaN(nacimiento?.getTime())) nacimiento = cli?.nacimiento || null } else nacimiento = cli?.nacimiento || null
     const visitas = parseInt(fd.get('visitas')) || 0
     let ultimaCita; const rawUlt=fd.get('ultimaCita')?.toString().trim(); if(rawUlt){ if(/^[0-9]{2}\/[0-9]{2}\/[0-9]{4}$/.test(rawUlt)) ultimaCita = parseDisplayDate(rawUlt) || cli?.ultimaCita || null; else ultimaCita = new Date(rawUlt); if(isNaN(ultimaCita?.getTime())) ultimaCita = cli?.ultimaCita || null } else ultimaCita = cli?.ultimaCita || null
-    const notas = fd.get('notas').toString()
+  const notas = fd.get('notas').toString()
+  const vip = fd.get('vip') === 'on'
     const movilErrEl = form.querySelector('[data-error-for="movil"]')
     if(movilErrEl){ movilErrEl.classList.add('hidden'); movilErrEl.textContent='' }
-    if(!/^[0-9]{9}$/.test(movil)){ if(movilErrEl){ movilErrEl.textContent='Móvil requerido (9 dígitos)'; movilErrEl.classList.remove('hidden') } form.movil.classList.add('cliente-editor-invalid'); form.movil.focus(); return } else { form.movil.classList.remove('cliente-editor-invalid') }
+    // Comprobación local de duplicados (móvil y dni) entre clientes cargados
+    const duplicates = []
+    const currentId = cli ? cli.id : null
+    if(movil){
+      const found = clientes.find(c=>c.movil===movil && c.id!==currentId)
+      if(found) duplicates.push('movil')
+    }
+    if(dni){
+      const foundD = clientes.find(c=>c.dni && c.dni === dni && c.id!==currentId)
+      if(foundD) duplicates.push('dni')
+    }
+    // Si hay duplicados locales, marcar ambos campos y cancelar el envío
+    if(duplicates.length){
+      duplicates.forEach(field=>{
+        const el = form.querySelector(`[name="${field}"]`)
+        const errEl = form.querySelector(`[data-error-for="${field}"]`)
+        if(el) el.classList.add('cliente-editor-invalid')
+        if(errEl){ errEl.textContent = `Error al guardar, el ${field==='movil'?'móvil':'DNI'} ya pertenece a un cliente.`; errEl.classList.remove('hidden') }
+      })
+      submitBtn.disabled = false
+      submitBtn.textContent = prevLabel
+      return
+    }
     let createdId=null
     // Área de estado
   let statusEl = form.querySelector('.cliente-editor-status')
@@ -195,10 +219,10 @@ function mountClienteEditor(){
   (async () => {
       try {
         if(!cli){
-          const nuevo = await crearCliente({ first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: 0, total_amount: 0, notes: notas })
+          const nuevo = await crearCliente({ first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: 0, total_amount: 0, notes: notas, is_vip: vip })
           createdId = nuevo.id
         } else {
-          await actualizarCliente(cli.id, { first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: visitas, last_appointment_at: ultimaCita? ultimaCita.toISOString(): null, notes: notas })
+          await actualizarCliente(cli.id, { first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: visitas, last_appointment_at: ultimaCita? ultimaCita.toISOString(): null, notes: notas, is_vip: vip })
         }
     form.dataset.original = JSON.stringify(collectFormSnapshot(form))
     aplicarFiltros()
@@ -235,31 +259,17 @@ function showClienteBalloon(msg){
       } catch(e){
         let errMsg = 'Error guardando cliente'
         let field = null
-        if(e && e.message === 'create_failed' && e.response){
-          try {
-            const r = await e.response.json()
-            if(r.error === 'duplicate_mobile'){
-              errMsg = 'Ya existe un usuario con el mismo móvil'; field = 'movil'
-            } else if(r.error === 'duplicate_dni'){
-              errMsg = 'Ya existe un usuario con el mismo DNI'; field = 'dni'
-            }
-          } catch{}
+        if(e && (e.code==='duplicate_mobile' || e.code==='duplicate_dni')){
+          field = e.code==='duplicate_mobile' ? 'movil' : 'dni'
+          errMsg = `Error al guardar, el ${field==='movil'?'móvil':'DNI'} ya pertenece a un cliente.`
         }
         if(field){
           const el = form.querySelector(`[name="${field}"]`)
           const errEl = form.querySelector(`[data-error-for="${field}"]`)
-          let campo = field === 'dni' ? 'DNI' : 'móvil'
-          let customMsg = `Error al guardar, el ${campo} ya pertenece a un cliente.`
-          if(el){
-            el.classList.add('cliente-editor-invalid')
-            el.style.borderColor = '#dc2626'
-            el.style.boxShadow = '0 0 0 2px #dc262644'
-          }
-          if(errEl){ errEl.textContent = customMsg; errEl.classList.remove('hidden') }
-          updateStatus(customMsg,'text-rose-600')
-        } else {
-          updateStatus('Error al guardar, el dato ya pertenece a un cliente.','text-rose-600')
+          if(el){ el.classList.add('cliente-editor-invalid') }
+          if(errEl){ errEl.textContent = errMsg; errEl.classList.remove('hidden') }
         }
+        updateStatus(errMsg,'text-rose-600')
       } finally {
         submitBtn.disabled = false
         submitBtn.textContent = prevLabel
@@ -288,6 +298,7 @@ function populateClienteEditor(c){
   if(form.dineroTotal) form.dineroTotal.value = c.dineroTotal!=null ? c.dineroTotal.toFixed(2)+' €' : ''
   if(form.ultimaCita && form.ultimaCita.getAttribute('data-date-adapted')==='1'){ form.ultimaCita.value = c.ultimaCita ? toDisplayDate(c.ultimaCita) : '' } else { form.ultimaCita.value = c.ultimaCita ? toInputDate(c.ultimaCita) : '' }
   form.notas.value = c.notas || ''
+  const vipChk = form.querySelector('#cliente-vip'); if(vipChk) vipChk.checked = !!c.vip
   form.dataset.original = JSON.stringify(collectFormSnapshot(form))
   updateDirtyIndicator(form)
   renderClienteHistory(c)
@@ -299,7 +310,7 @@ function adaptDateInputsForIOS(root){
   ;['ultimaCita'].forEach(name=>{ const inp=root.querySelector(`input[name="${name}"]`); if(!inp||inp.getAttribute('data-date-adapted')==='1') return; if(inp.type!=='date') return; const val=inp.value; inp.type='text'; inp.placeholder='dd/mm/aaaa'; inp.inputMode='numeric'; inp.pattern='[0-9]{2}/[0-9]{2}/[0-9]{4}'; inp.setAttribute('data-date-adapted','1'); if(val){ const d=new Date(val); if(!isNaN(d.getTime())) inp.value=toDisplayDate(d) } inp.addEventListener('blur', ()=>{ const t=inp.value.trim(); if(!t){ inp.classList.remove('cliente-editor-invalid'); return } const d=parseDisplayDate(t); if(!d){ inp.classList.add('cliente-editor-invalid') } else { inp.classList.remove('cliente-editor-invalid'); inp.value=toDisplayDate(d) } }) })
 }
 function collectFormSnapshot(form){
-  return { nombre:form.nombre.value.trim(), apellidos:form.apellidos.value.trim(), movil:form.movil.value.trim(), dni:form.dni.value.trim(), direccion:form.direccion?.value.trim()||'', codigoPostal:form.codigoPostal?.value.trim()||'', instagram:form.instagram.value.trim(), nacimiento:form.nacimiento.value, visitas:form.visitas.value, dineroTotal:form.dineroTotal?.value||'', ultimaCita:form.ultimaCita.value, notas:form.notas.value }
+  return { nombre:form.nombre.value.trim(), apellidos:form.apellidos.value.trim(), movil:form.movil.value.trim(), dni:form.dni.value.trim(), direccion:form.direccion?.value.trim()||'', codigoPostal:form.codigoPostal?.value.trim()||'', instagram:form.instagram.value.trim(), nacimiento:form.nacimiento.value, visitas:form.visitas.value, dineroTotal:form.dineroTotal?.value||'', ultimaCita:form.ultimaCita.value, notas:form.notas.value, vip: form.querySelector('#cliente-vip')?.checked ? 1:0 }
 }
 function isEditorDirty(form){ if(!form?.dataset.original) return false; try { return JSON.stringify(JSON.parse(form.dataset.original)) !== JSON.stringify(collectFormSnapshot(form)) } catch { return false } }
 function updateDirtyIndicator(form){ const header=document.getElementById('cliente-editor-title'); if(!header) return; const dirty=isEditorDirty(form); let dot=header.querySelector('.cliente-editor-dirty'); if(dirty && !dot){ dot=document.createElement('span'); dot.className='cliente-editor-dirty'; dot.textContent='•'; dot.style.color='#dc2626'; dot.style.fontWeight='700'; dot.style.marginLeft='4px'; header.appendChild(dot) } else if(!dirty && dot){ dot.remove() } }
@@ -319,6 +330,7 @@ function nuevoCliente(){
     form.instagram.value='@'; form.nacimiento.value='';
     form.visitas.value='0'; if(form.dineroTotal) form.dineroTotal.value=''; form.ultimaCita.value='';
     form.notas.value='';
+  const vipChk = form.querySelector('#cliente-vip'); if(vipChk) vipChk.checked = false
     const idBadge = ov.querySelector('[data-ce-id]'); if(idBadge) idBadge.textContent='Nuevo'
     // Ocultar bloque métricas en modo nuevo
     const metrics = ov.querySelector('[data-metrics-block]'); if(metrics) metrics.classList.add('hidden')

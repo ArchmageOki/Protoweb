@@ -77,8 +77,11 @@ export async function initSchema(){
       visits_count int not null default 0,
       total_amount numeric(14,2) not null default 0,
       last_appointment_at timestamptz null,
-      notes text
+    notes text,
+    is_vip boolean not null default false
     );
+  -- Asegurar columna is_vip si la tabla ya existía
+  alter table clients add column if not exists is_vip boolean not null default false;
     create index if not exists idx_clients_user on clients(user_id);
     -- Eventos de calendario per-user
     create table if not exists calendar_events (
@@ -90,10 +93,57 @@ export async function initSchema(){
       end_at timestamptz not null,
       all_day boolean not null default false,
       created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
+      updated_at timestamptz not null default now(),
+      google_event_id text null,
+      google_etag text null,
+      deleted boolean not null default false,
+      calendar_id text null
     );
+  -- Asegurar columnas nuevas si la tabla ya existía antes de añadir soporte Google
+  alter table calendar_events add column if not exists google_event_id text null;
+  alter table calendar_events add column if not exists google_etag text null;
+  alter table calendar_events add column if not exists deleted boolean not null default false;
+  alter table calendar_events add column if not exists calendar_id text null;
     create index if not exists idx_events_user on calendar_events(user_id);
     create index if not exists idx_events_user_start on calendar_events(user_id,start_at);
+    create index if not exists idx_events_google_evt on calendar_events(google_event_id);
+  -- Sustituimos índice parcial (que impedía ON CONFLICT inference) por índice completo
+  drop index if exists u_events_user_google;
+  create unique index if not exists u_events_user_google on calendar_events(user_id, google_event_id);
+    -- Asegurar constraint única (más explícito para ON CONFLICT)
+    do $$
+    begin
+      if not exists (select 1 from pg_constraint where conname = 'uq_calendar_events_user_google') then
+        alter table calendar_events add constraint uq_calendar_events_user_google unique (user_id, google_event_id);
+      end if;
+    exception when others then
+      -- Ignorar si ya existe por carrera
+      null;
+    end $$;
+    -- Cuenta y tokens Google por usuario
+    create table if not exists google_calendar_accounts(
+      user_id text primary key references users(id) on delete cascade,
+      access_token text not null,
+      refresh_token text not null,
+      token_type text not null,
+      scope text null,
+      expiry timestamptz not null,
+  calendar_id text null,
+      sync_token text null,
+      last_sync_at timestamptz null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    -- Asegurar calendar_id nullable (migración tolerante)
+    do $$
+    begin
+      if exists (select 1 from information_schema.columns where table_name='google_calendar_accounts' and column_name='calendar_id') then
+        -- Intentar alterar si es not null
+        begin
+          alter table google_calendar_accounts alter column calendar_id drop not null;
+        exception when others then null; end;
+      end if;
+    end $$;
     -- Sesión WhatsApp (una por usuario)
     create table if not exists whatsapp_sessions (
       user_id text primary key references users(id) on delete cascade,
@@ -231,7 +281,7 @@ export async function pgCreateClient(id, userId, data){
     first_name=null, last_name=null,
     mobile=null,
     instagram=null, dni=null, address=null, postal_code=null, birth_date=null,
-    visits_count=0, total_amount=0, last_appointment_at=null, notes=null
+  visits_count=0, total_amount=0, last_appointment_at=null, notes=null, is_vip=false
   } = data||{}
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || '—'
   const finalMobile = mobile
@@ -239,11 +289,11 @@ export async function pgCreateClient(id, userId, data){
   const bd = (birth_date && String(birth_date).trim()) ? birth_date : null
   const laa = (last_appointment_at && String(last_appointment_at).trim()) ? last_appointment_at : null
   const { rows } = await pool.query(`insert into clients(
-      id,user_id,notes,first_name,last_name,full_name,mobile,instagram,dni,address,postal_code,birth_date,visits_count,total_amount,last_appointment_at
+      id,user_id,notes,first_name,last_name,full_name,mobile,instagram,dni,address,postal_code,birth_date,visits_count,total_amount,last_appointment_at,is_vip
     ) values(
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
     ) returning *`, [
-      id,userId,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa
+      id,userId,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip
     ])
   return rows[0]
 }
@@ -252,7 +302,7 @@ export async function pgListClients(userId){
     id,user_id,created_at,updated_at,
     full_name,first_name,last_name,
     mobile,instagram,dni,address,postal_code,birth_date,
-    visits_count,total_amount,last_appointment_at,notes
+  visits_count,total_amount,last_appointment_at,notes,is_vip
     from clients where user_id=$1 order by created_at desc`, [userId])
   return rows
 }
@@ -261,7 +311,7 @@ export async function pgGetClient(userId, id){
     id,user_id,created_at,updated_at,
     full_name,first_name,last_name,
     mobile,instagram,dni,address,postal_code,birth_date,
-    visits_count,total_amount,last_appointment_at,notes
+  visits_count,total_amount,last_appointment_at,notes,is_vip
     from clients where user_id=$1 and id=$2`, [userId,id])
   return rows[0]||null
 }
@@ -272,8 +322,8 @@ export async function pgUpdateClient(userId, id, data){
     first_name=existing.first_name, last_name=existing.last_name,
     mobile=existing.mobile,
     instagram=existing.instagram, dni=existing.dni, address=existing.address, postal_code=existing.postal_code, birth_date=existing.birth_date,
-    visits_count=existing.visits_count, total_amount=existing.total_amount, last_appointment_at=existing.last_appointment_at,
-    notes=existing.notes
+  visits_count=existing.visits_count, total_amount=existing.total_amount, last_appointment_at=existing.last_appointment_at,
+  notes=existing.notes, is_vip=existing.is_vip
   } = data||{}
   const finalMobile = mobile
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || existing.full_name
@@ -281,9 +331,9 @@ export async function pgUpdateClient(userId, id, data){
   const laa = (last_appointment_at && String(last_appointment_at).trim()) ? last_appointment_at : null
   const { rows } = await pool.query(`update clients set
       notes=$3,first_name=$4,last_name=$5,full_name=$6,mobile=$7,instagram=$8,dni=$9,address=$10,postal_code=$11,birth_date=$12,
-      visits_count=$13,total_amount=$14,last_appointment_at=$15,updated_at=now()
+      visits_count=$13,total_amount=$14,last_appointment_at=$15,is_vip=$16,updated_at=now()
     where user_id=$1 and id=$2 returning *`, [
-      userId,id,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa
+      userId,id,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip
     ])
   return rows[0]||null
 }
@@ -300,10 +350,10 @@ export async function pgCreateEvent(id, userId, { title, description=null, start
 }
 export async function pgListEvents(userId, from=null, to=null){
   if(from && to){
-    const { rows } = await pool.query(`select * from calendar_events where user_id=$1 and start_at >= $2 and start_at <= $3 order by start_at asc`, [userId, from, to])
+    const { rows } = await pool.query(`select * from calendar_events where user_id=$1 and deleted is not true and start_at >= $2 and start_at <= $3 order by start_at asc`, [userId, from, to])
     return rows
   }
-  const { rows } = await pool.query('select * from calendar_events where user_id=$1 order by start_at asc limit 500', [userId])
+  const { rows } = await pool.query('select * from calendar_events where user_id=$1 and deleted is not true order by start_at asc limit 500', [userId])
   return rows
 }
 export async function pgGetEvent(userId, id){
@@ -318,6 +368,19 @@ export async function pgUpdateEvent(userId, id, { title, description=null, start
 export async function pgDeleteEvent(userId, id){
   const { rowCount } = await pool.query('delete from calendar_events where user_id=$1 and id=$2', [userId,id])
   return rowCount>0
+}
+// Actualiza google_event_id y etag tras creación local + remota
+export async function pgAttachGoogleEvent(userId, id, google_event_id, google_etag){
+  const { rows } = await pool.query(`
+    update calendar_events
+      set google_event_id=$3, google_etag=$4, updated_at=now()
+      where user_id=$1 and id=$2 and (google_event_id is null or google_event_id=$3)
+    returning *
+  `, [userId, id, google_event_id, google_etag])
+  return rows[0]||null
+}
+export async function pgUpdateGoogleEtag(userId, id, google_etag){
+  await pool.query('update calendar_events set google_etag=$3, updated_at=now() where user_id=$1 and id=$2', [userId,id,google_etag])
 }
 
 // --------- WHATSAPP SESSION ---------

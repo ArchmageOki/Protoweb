@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/src/style.css" />
     <title>TailAdmin — Clientes</title>
   </head>
   <body class="bg-gray-50 text-slate-800">
@@ -55,6 +56,7 @@
               <table class="min-w-full text-sm clients-table clients-table-nowrap">
                 <thead>
                   <tr class="text-left border-b border-slate-200 bg-slate-50 select-none">
+                    <th data-sort="vip" class="w-6 px-2 py-2 font-medium cursor-pointer hover:bg-slate-100" aria-label="Ordenar VIP" title="VIP"> </th>
                     <th data-sort="nombre" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Nombre</th>
                     <th data-sort="apellidos" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Apellidos</th>
                     <th data-sort="movil" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Móvil</th>
@@ -69,6 +71,7 @@
                     <th data-sort="notas" class="px-3 py-2 font-medium cursor-pointer hover:bg-slate-100">Notas</th>
                   </tr>
                   <tr id="clientes-filters-row" class="bg-slate-50 border-b border-slate-200 hidden">
+                    <th class="px-2 py-1"></th>
                     <th class="px-2 py-1"><input data-col="nombre" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
                     <th class="px-2 py-1"><input data-col="apellidos" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>
                     <th class="px-2 py-1"><input data-col="movil" placeholder="Filtrar" class="clientes-filter-input w-full px-2 py-1 border border-slate-300 rounded text-xs" /></th>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Conectando Google…</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="min-h-screen flex items-center justify-center bg-gray-50 text-slate-700">
+    <div class="text-center space-y-4">
+      <div class="animate-spin h-8 w-8 border-4 border-slate-300 border-t-slate-700 rounded-full mx-auto"></div>
+      <p class="text-sm">Procesando autorización con Google…</p>
+      <p id="msg" class="text-xs text-slate-500"></p>
+    </div>
+    <script type="module">
+      import { authFetch, apiBase, ensureRefreshed } from '/src/auth.js'
+      async function run(){
+        const p = new URLSearchParams(location.search)
+        const code = p.get('code')
+        const state = p.get('state')
+        const err = p.get('error')
+        const el = document.getElementById('msg')
+        if(err){ el.textContent = 'Error: ' + err; return }
+        if(!code){ el.textContent = 'Falta código OAuth'; return }
+        // Recuperar code_verifier de sessionStorage (PKCE)
+        const code_verifier = sessionStorage.getItem('google_pkce_verifier') || undefined
+        try {
+          // Asegurar que tenemos access token (la navegación limpia estado en memoria)
+          await ensureRefreshed()
+          const r = await authFetch(apiBase + '/data/integrations/google/callback',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code, state, code_verifier }) })
+          if(!r.ok){
+            let msg = 'callback_failed'
+            try { const j = await r.json(); msg = j.error || msg } catch{}
+            throw new Error(msg)
+          }
+          // Limpieza
+          sessionStorage.removeItem('google_pkce_verifier')
+          location.replace('/calendario.html?google_auth=1')
+        } catch(e){ el.textContent = 'Fallo integrando Google'; console.error('[google-oauth][callback]', e) }
+      }
+      run()
+    </script>
+  </body>
+</html>

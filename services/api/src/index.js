@@ -1,8 +1,10 @@
+import 'dotenv/config'
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import authRoutes, { authMetrics } from './auth/routes.js'
-import { startRefreshCleanup } from './db/pg.js'
+import { startRefreshCleanup, pool } from './db/pg.js'
+import { applySync } from './integrations/googleCalendar.js'
 import { requireAuth } from './middleware/auth.js'
 import dataRoutes from './routes-data.js'
 
@@ -47,4 +49,14 @@ const PORT = process.env.PORT || 4002
 app.listen(PORT, ()=> {
   console.log('[api] escuchando en', PORT)
   startRefreshCleanup()
+  // Scheduler simple para sincronizar cuentas Google cada 5 minutos
+  const interval = +(process.env.GOOGLE_SYNC_INTERVAL_MS || 5*60*1000)
+  setInterval(async ()=>{
+    try {
+      const { rows } = await pool.query('select user_id from google_calendar_accounts')
+      for(const r of rows){
+        applySync(r.user_id).catch(e=>console.error('[google][sync] fallo user', r.user_id, e.message))
+      }
+    } catch(e){ console.error('[google][sync] scheduler error', e.message) }
+  }, interval)
 })

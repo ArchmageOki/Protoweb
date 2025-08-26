@@ -2,7 +2,8 @@ import './style.css'
 import { Calendar } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import esLocale from '@fullcalendar/core/locales/es'
-import { ensureHolidayYears, isHoliday, ymd, getSampleEvents } from './calendar-utils'
+import { ensureHolidayYears, isHoliday, ymd, loadEventsRange } from './calendar-utils'
+import { authFetch, apiBase } from './auth.js'
 
 // Sidebar móvil + colapso escritorio reutilizado
 const sidebar = document.getElementById('sidebar')
@@ -42,11 +43,30 @@ collapseBtn?.addEventListener('click', () => {
 const calEl = document.getElementById('month-calendar')
 if (calEl) {
   calEl.classList.add('no-text-select')
-  // Reutilizar mismos eventos de demostración que el dashboard
-  const now = new Date()
-  const Y = now.getFullYear()
-  const M = now.getMonth()
-  const events = getSampleEvents(Y, M)
+  let currentRange = { start: null, end: null }
+  let loadingOverlay = null
+  function showLoading(){
+    if(!calEl) return
+    if(!loadingOverlay){
+      loadingOverlay = document.createElement('div')
+      loadingOverlay.className='calendar-loading-overlay'
+      const spin = document.createElement('div')
+      spin.className='calendar-loading-spinner'
+      loadingOverlay.appendChild(spin)
+      calEl.appendChild(loadingOverlay)
+    }
+    loadingOverlay.style.display='flex'
+  }
+  function hideLoading(){ if(loadingOverlay) loadingOverlay.style.display='none' }
+  async function refetch(range){
+    showLoading()
+    try {
+  const evs = await loadEventsRange(range.start, range.end)
+  calendar.removeAllEvents()
+  evs.forEach(e=> calendar.addEvent({ ...e, extendedProps:{ ...(e.extendedProps||{}), __persisted:true } }))
+    } catch(e){ console.error('refetch_error', e) }
+    finally { hideLoading() }
+  }
 
   const calendar = new Calendar(calEl, {
     plugins: [dayGridPlugin],
@@ -74,16 +94,30 @@ if (calEl) {
     },
     async datesSet(info){
       await ensureHolidayYears(info.start, info.end)
-      calendar.rerenderDates()
-  queueMicrotask(markEmptyDays)
+      // Refrescar clases de festivos manualmente (la versión actual no expone rerenderDates)
+      try {
+        const dayNodes = calEl.querySelectorAll('.fc-daygrid-day')
+        dayNodes.forEach(day => {
+          const ds = day.getAttribute('data-date')
+          if(!ds) return
+          const dObj = new Date(ds+'T00:00:00')
+            if(isHoliday(dObj)) day.classList.add('is-holiday')
+            else day.classList.remove('is-holiday')
+        })
+      } catch(e){ /* noop */ }
+      currentRange = { start: info.start, end: info.end }
+      refetch(currentRange)
+      queueMicrotask(markEmptyDays)
     },
     eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
     eventContent(arg){
       // Una sola línea: HH:MM Título
       const start = arg.event.start
       const title = arg.event.title || ''
+      const isAll = arg.event.allDay
       const fmt = (d) => d ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''
-      const text = `${fmt(start)} ${title}`.trim()
+      const timePart = isAll ? '' : fmt(start)
+      const text = `${timePart} ${title}`.trim()
       const wrapper = document.createElement('div')
       wrapper.style.display = 'flex'
       wrapper.style.alignItems = 'center'
@@ -107,7 +141,26 @@ if (calEl) {
       }
       return { domNodes: [wrapper] }
     },
-    eventClick(info){
+    // Orden: primero eventos con hora, luego all-day; entre temporales, por hora de inicio.
+    eventOrder(a, b){
+      const aAll = a.allDay ? 1 : 0
+      const bAll = b.allDay ? 1 : 0
+      if(aAll !== bAll) return aAll - bAll // 0 (timed) antes que 1 (all-day)
+      if(!a.allDay && !b.allDay){
+        const toMs = (ev)=>{
+          if(ev.start instanceof Date) return ev.start.getTime()
+          if(typeof ev.start === 'string'){ const d = new Date(ev.start); if(!isNaN(d)) return d.getTime() }
+          if(ev.start && typeof ev.start.getTime === 'function'){ try { return ev.start.getTime() } catch{} }
+          return 0
+        }
+        const at = toMs(a)
+        const bt = toMs(b)
+        return at - bt
+      }
+      // Ambos all-day: mantener orden original (por título como fallback)
+      return (a.title||'').localeCompare(b.title||'')
+    },
+  eventClick(info){
       info.jsEvent?.preventDefault()
       const ev = info.event
       const start = ev.start
@@ -135,6 +188,29 @@ if (calEl) {
   selectedEventId = ev.id || ev._def?.publicId || ev._instance?.instanceId || ev
   // Sync checkbox desde extendedProps
   if (chkDesign) chkDesign.checked = !!ev.extendedProps.designFinished
+  // Parsear descripción para rellenar precios y notas
+  try {
+    const desc = ev.extendedProps?.description || ev._def?.extendedProps?.description || ''
+    if(desc){
+      const lines = desc.split(/\n+/).map(l=>l.trim())
+      const map = {}
+      for(const line of lines){
+        const idx = line.indexOf(':')
+        if(idx>-1){
+          const key = line.slice(0,idx).toLowerCase().trim()
+          const val = line.slice(idx+1).trim()
+          map[key]=val
+        }
+      }
+      const stripEuro = v => v?.replace(/€/g,'').trim() || ''
+      const totalInput = document.getElementById('evt-precio-total')
+      const pagadoInput = document.getElementById('evt-precio-pagado')
+      const notasInput = document.getElementById('evt-notas')
+      if(totalInput && map['precio total']) totalInput.value = stripEuro(map['precio total'])
+      if(pagadoInput && map['pagado']) pagadoInput.value = stripEuro(map['pagado'])
+      if(notasInput && map['notas']) notasInput.value = map['notas']
+    }
+  } catch {}
   applySelectionStyles()
   const formTitle = document.getElementById('event-form-title')
   if (formTitle) formTitle.textContent = 'Editar evento'
@@ -175,7 +251,7 @@ if (calEl) {
         el.classList.add('is-design-finished')
       }
     },
-    events,
+  events: [],
     eventsSet(){
       markEmptyDays()
     }
@@ -196,7 +272,7 @@ if (calEl) {
   let selectedEventId = null
   const saveBtn = document.getElementById('evt-save')
   const deleteBtn = document.getElementById('evt-delete')
-  const resetBtn = document.getElementById('evt-reset')
+  // resetBtn eliminado
 
   function updateActionButtons(){
     const panel = document.getElementById('event-form-panel')
@@ -208,9 +284,7 @@ if (calEl) {
         deleteBtn.classList.add('hidden')
       }
     }
-    if(resetBtn){
-      if(selectedEventId){ resetBtn.classList.add('hidden') } else { resetBtn.classList.remove('hidden') }
-    }
+  // sin resetBtn
   }
   function applySelectionStyles(){
     const all = calEl.querySelectorAll('.fc-daygrid-event')
@@ -248,26 +322,14 @@ if (calEl) {
   calendar.rerenderEvents()
     })
   }
-  // Botón reset formulario
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      if(selectedEventId) return
-  if(!confirm('¿Limpiar el formulario? Se perderán los datos actuales.')) return
-  clearForm()
-  // Eliminar placeholder de creación si existe
-  document.querySelectorAll('.fc-placeholder-creating').forEach(el=> el.remove())
-  selectedEventId = null
-  applySelectionStyles()
-  updateActionButtons()
-    })
-  }
+  // resetBtn eliminado
   function clearForm(){
     const nombre = document.getElementById('evt-nombre'); if (nombre) nombre.value = ''
     const fecha = document.getElementById('evt-fecha'); if (fecha) fecha.value = ''
-    const ini = document.getElementById('evt-inicio'); if (ini) ini.value = '09:00'
-    const fin = document.getElementById('evt-fin'); if (fin) fin.value = '10:00'
-    const iniLabel = document.querySelector('[data-time-display="evt-inicio"] .time-value'); if (iniLabel) iniLabel.textContent = '09:00'
-    const finLabel = document.querySelector('[data-time-display="evt-fin"] .time-value'); if (finLabel) finLabel.textContent = '10:00'
+    const ini = document.getElementById('evt-inicio'); if (ini) ini.value = '10:00'
+    const fin = document.getElementById('evt-fin'); if (fin) fin.value = '11:00'
+    const iniLabel = document.querySelector('[data-time-display="evt-inicio"] .time-value'); if (iniLabel) iniLabel.textContent = '10:00'
+    const finLabel = document.querySelector('[data-time-display="evt-fin"] .time-value'); if (finLabel) finLabel.textContent = '11:00'
     const precioT = document.getElementById('evt-precio-total'); if (precioT) precioT.value = ''
     const precioP = document.getElementById('evt-precio-pagado'); if (precioP) precioP.value = ''
     const notas = document.getElementById('evt-notas'); if (notas) notas.value = ''
@@ -286,7 +348,14 @@ if (calEl) {
       if(!ev) return
       const title = ev.title || 'este evento'
       if(!confirm(`¿Eliminar definitivamente "${title}"?`)) return
-      try { ev.remove() } catch {}
+      if(ev.extendedProps.__persisted){
+        authFetch(apiBase + '/data/events/'+encodeURIComponent(ev.id), { method:'DELETE' })
+          .then(r=>{ if(!r.ok) throw new Error('delete_failed'); return r.json(); })
+          .then(()=>{ try { ev.remove() } catch {}; if(currentRange?.start && currentRange?.end){ refetch(currentRange).catch(()=>{}) } })
+          .catch(err=>{ console.error('delete_failed', err); alert('Error eliminando'); })
+      } else {
+        try { ev.remove() } catch {}
+      }
     selectedEventId = null
       applySelectionStyles()
   clearForm()
@@ -311,6 +380,37 @@ if (calEl) {
       const endTime = finHidden?.value || startTime
       if(!title){ alert('El nombre es obligatorio'); return }
       if(!date){ alert('La fecha es obligatoria'); return }
+      // Construir descripción estructurada para sincronizar con Google
+      const parseAmount = (v)=>{
+        if(v==null) return null
+        const s=String(v).trim(); if(!s) return null
+        const n = Number(s.replace(',','.'))
+        if(isNaN(n)) return null
+        return n
+      }
+      const fmtAmount = (n)=>{
+        if(n==null) return ''
+        const hasDecimals = Math.abs(n - Math.trunc(n)) > 0.000001
+        return (hasDecimals ? n.toFixed(2) : String(Math.trunc(n))) + ' €'
+      }
+      const totalRaw = precioT?.value||''
+      const pagadoRaw = precioP?.value||''
+      const totalParsed = parseAmount(totalRaw)
+      const pagadoParsed = parseAmount(pagadoRaw)
+      let pendienteParsed = null
+      if(totalParsed!=null && pagadoParsed!=null){ pendienteParsed = totalParsed - pagadoParsed }
+      const totalStr = fmtAmount(totalParsed)
+      const pagadoStr = fmtAmount(pagadoParsed)
+      const pendienteStr = fmtAmount(pendienteParsed)
+      const notasVal = (notas?.value||'').trim()
+      const description = [
+        `Nombre: ${title}`,
+        `Whatsapp / Instagram:`,
+        `Precio total: ${totalStr}`,
+        `Pagado: ${pagadoStr}`,
+        `Pendiente: ${pendienteStr}`,
+        `Notas: ${notasVal}`
+      ].join('\n')
       // Construir Date objetos
       const toDate = (d,t)=>{
         const [Y,M,D] = d.split('-').map(Number)
@@ -320,58 +420,158 @@ if (calEl) {
       let start = toDate(date,startTime)
       let end = toDate(date,endTime)
       if(end <= start){
-        // Ajuste automático a +30min
-        end = new Date(start.getTime()+30*60000)
+        // Ajuste automático a +1 hora en lugar de +30min
+        end = new Date(start.getTime()+60*60000)
       }
       if(selectedEventId){
         // Editar
         const ev = calendar.getEvents().find(ev => (ev.id || ev._def?.publicId || ev._instance?.instanceId || ev) === selectedEventId)
         if(!ev){ selectedEventId = null; updateActionButtons(); return }
-  try {
-          ev.setProp('title', title)
-          ev.setStart(start)
-          ev.setEnd(end)
-          if(typeof ev.setExtendedProp === 'function'){
-            ev.setExtendedProp('designFinished', designChk?.checked || false)
-            ev.setExtendedProp('priceTotal', precioT?.value || '')
-            ev.setExtendedProp('pricePaid', precioP?.value || '')
-            ev.setExtendedProp('notes', notas?.value || '')
+        authFetch(apiBase + '/data/events/'+encodeURIComponent(ev.id), {
+          method:'PUT',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ title, description, start_at: start.toISOString(), end_at: end.toISOString(), all_day:false })
+        }).then(async r=>{
+          if(!r.ok) throw new Error('update_failed')
+          const data = await r.json()
+          ev.setProp('title', data.item.title)
+          ev.setStart(data.item.start_at)
+          ev.setEnd(data.item.end_at)
+          ev.setExtendedProp('__persisted', true)
+        }).catch(err=> alert('Error actualizando evento'))
+      } else {
+        // Crear
+        authFetch(apiBase + '/data/events', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ title, description, start_at: start.toISOString(), end_at: end.toISOString(), all_day:false })
+        }).then(async r=>{
+          if(!r.ok) throw new Error('create_failed')
+          const data = await r.json()
+          calendar.addEvent({ id: data.item.id, title: data.item.title, start: data.item.start_at, end: data.item.end_at, extendedProps:{ __persisted:true } })
+          clearForm()
+          // Refetch completo para asegurar etags/google_event_id y coherencia
+          if(currentRange?.start && currentRange?.end){
+            try { await refetch(currentRange) } catch {}
           }
-        } catch {}
-  } else {
-        // Crear nuevo evento
-        calendar.addEvent({
-          id: 'evt-'+Date.now(),
-          title,
-          start,
-          end,
-          extendedProps: {
-            designFinished: designChk?.checked || false,
-            priceTotal: precioT?.value || '',
-            pricePaid: precioP?.value || '',
-            notes: notas?.value || ''
-          }
-        })
-        // Reset después de crear
-  if(nombre) nombre.value=''
-        if(fecha) fecha.value=''
-        if(iniHidden) iniHidden.value='09:00'
-        if(finHidden) finHidden.value='10:00'
-        const iniLabel = document.querySelector('[data-time-display="evt-inicio"] .time-value'); if (iniLabel) iniLabel.textContent = '09:00'
-        const finLabel = document.querySelector('[data-time-display="evt-fin"] .time-value'); if (finLabel) finLabel.textContent = '10:00'
-        if(precioT) precioT.value=''
-        if(precioP) precioP.value=''
-        if(notas) notas.value=''
-  if(designChk) designChk.checked=false
-  const panel = document.getElementById('event-form-panel'); if(panel){ panel.classList.add('creating-event'); panel.classList.remove('flash-new'); void panel.offsetWidth; panel.classList.add('flash-new'); }
-  // Salir del modo creación tras guardar el nuevo evento
-  if(panel){ panel.classList.remove('creating-event','flash-new') }
+        }).catch(err=> alert('Error creando evento'))
       }
-      calendar.rerenderEvents()
+      try { if(typeof calendar.rerenderEvents === 'function') calendar.rerenderEvents(); else calendar.refetchEvents?.(); } catch {}
       markEmptyDays()
       applySelectionStyles()
+      // Mostrar indicador visual de guardado
+      const ind = document.getElementById('save-indicator')
+      if(ind){
+        // Mantener el SVG interno; solo togglear visibilidad
+        ind.classList.remove('opacity-0')
+        ind.classList.add('opacity-100')
+        clearTimeout(ind._tHide)
+        ind._tHide = setTimeout(()=>{ ind.classList.add('opacity-0'); ind.classList.remove('opacity-100') }, 1800)
+      }
     })
   }
+  updateActionButtons()
+  
+  // ====== Gestión de horarios y validaciones ======
+  function addTimeToTime(timeStr, minutesToAdd) {
+    const [h, m] = timeStr.split(':').map(Number)
+    const totalMinutes = h * 60 + m + minutesToAdd
+    const newH = Math.floor(totalMinutes / 60) % 24
+    const newM = totalMinutes % 60
+    return `${String(newH).padStart(2,'0')}:${String(newM).padStart(2,'0')}`
+  }
+  
+  function timeToMinutes(timeStr) {
+    const [h, m] = timeStr.split(':').map(Number)
+    return h * 60 + m
+  }
+
+  function validateTimes(showAutoFix=false){
+    const ini = document.getElementById('evt-inicio')
+    const fin = document.getElementById('evt-fin')
+    const finBtn = document.querySelector('[data-time-display="evt-fin"]')
+    const err = document.getElementById('time-error')
+    if(!ini || !fin || !finBtn) return
+    const startMin = timeToMinutes(ini.value)
+    const endMin = timeToMinutes(fin.value)
+    if(endMin <= startMin){
+      finBtn.classList.add('border-red-500','focus:ring-red-400')
+      finBtn.classList.remove('border-slate-300')
+      if(err) err.classList.remove('hidden')
+      if(showAutoFix){
+        const corrected = addTimeToTime(ini.value, 60)
+        fin.value = corrected
+        const finLabel = document.querySelector('[data-time-display="evt-fin"] .time-value'); if(finLabel) finLabel.textContent = corrected
+        finBtn.classList.remove('border-red-500','focus:ring-red-400')
+        finBtn.classList.add('border-slate-300')
+        if(err) err.classList.add('hidden')
+      }
+      return false
+    }
+    finBtn.classList.remove('border-red-500','focus:ring-red-400')
+    finBtn.classList.add('border-slate-300')
+    if(err) err.classList.add('hidden')
+    return true
+  }
+
+  function rebuildEndHourOptions(){
+    // Filtrar horas disponibles en el popover de fin según inicio seleccionado
+    const ini = document.getElementById('evt-inicio')
+    const pop = document.querySelector('[data-time-popover="evt-fin"]')
+    if(!ini || !pop) return
+    const startHour = parseInt(ini.value.split(':')[0],10)
+    const hourList = pop.querySelector('.time-hours')
+    if(!hourList) return
+    hourList.querySelectorAll('[data-hour]').forEach(li => {
+      const h = parseInt(li.dataset.hour,10)
+      if(h < startHour){
+        li.classList.add('opacity-30','pointer-events-none')
+      } else {
+        li.classList.remove('opacity-30','pointer-events-none')
+      }
+    })
+  }
+  
+  // Listener para hora de inicio: actualizar fin automáticamente
+  const iniHidden = document.getElementById('evt-inicio')
+  if (iniHidden) {
+    iniHidden.addEventListener('change', () => {
+      const finHidden = document.getElementById('evt-fin')
+      const finLabel = document.querySelector('[data-time-display="evt-fin"] .time-value')
+      if (finHidden && !finHidden.dataset.userModified) {
+        // Solo auto-actualizar si el usuario no ha tocado la hora de fin manualmente
+        const newEnd = addTimeToTime(iniHidden.value, 60) // +1 hora
+        finHidden.value = newEnd
+        if (finLabel) finLabel.textContent = newEnd
+      }
+  rebuildEndHourOptions()
+  validateTimes(false)
+    })
+  }
+  
+  // Listener para hora de fin: validar que no sea <= inicio y marcar como modificado por usuario
+  const finHidden = document.getElementById('evt-fin')
+  if (finHidden) {
+    finHidden.addEventListener('change', () => {
+      finHidden.dataset.userModified = 'true'
+      const iniHidden = document.getElementById('evt-inicio')
+      if (iniHidden) {
+        const startMin = timeToMinutes(iniHidden.value)
+        const endMin = timeToMinutes(finHidden.value)
+  if (endMin <= startMin) validateTimes(false); else validateTimes(false)
+      }
+    })
+  }
+  
+  // Resetear flag de modificación cuando se limpia el formulario
+  const originalClearForm = clearForm
+  clearForm = function() {
+    originalClearForm()
+    if (finHidden) delete finHidden.dataset.userModified
+  rebuildEndHourOptions()
+  validateTimes(false)
+  }
+  
   updateActionButtons()
   // ====== Pulsación larga en un día para preseleccionar fecha (iPad / touch) ======
   ;(function(){
@@ -396,7 +596,9 @@ if (calEl) {
         // Rellenar fecha
         const fecha = document.getElementById('evt-fecha')
         if(fecha){ fecha.value = lpDate }
-        // Reset selección
+        // Reset selección y limpiar formulario
+        clearForm()
+        if(fecha){ fecha.value = lpDate } // Restaurar fecha después del clear
         selectedEventId = null
         applySelectionStyles()
   const formTitle = document.getElementById('event-form-title'); if (formTitle) formTitle.textContent = 'Nuevo evento'
@@ -415,11 +617,52 @@ if (calEl) {
       calEl.addEventListener(ev, cancel, { passive:true })
     })
     // Limpiar placeholder al guardar o limpiar
-    if(saveBtn){ saveBtn.addEventListener('click', removePlaceholder) }
-    if(resetBtn){ resetBtn.addEventListener('click', removePlaceholder) }
-    if(deleteBtn){ deleteBtn.addEventListener('click', removePlaceholder) }
+  if(saveBtn){ saveBtn.addEventListener('click', removePlaceholder) }
+  if(deleteBtn){ deleteBtn.addEventListener('click', removePlaceholder) }
   })()
+  
+  // ====== Doble click en día vacío para nuevo evento ======
+  calEl.addEventListener('dblclick', (e)=>{
+    const day = e.target.closest('.fc-daygrid-day')
+    if(!day) return
+    // No activar si se hace doble click sobre un evento existente
+    if(e.target.closest('.fc-daygrid-event')) return
+    
+    const dayDate = day.getAttribute('data-date')
+    if(!dayDate) return
+    
+    // Limpiar formulario completamente
+    clearForm()
+    
+    // Establecer la fecha del día clickeado
+    const fecha = document.getElementById('evt-fecha')
+    if(fecha) fecha.value = dayDate
+    
+    // Reset selección
+    selectedEventId = null
+    applySelectionStyles()
+    updateActionButtons()
+    
+    // Actualizar título y panel
+    const formTitle = document.getElementById('event-form-title')
+    if(formTitle) formTitle.textContent = 'Nuevo evento'
+    const panel = document.getElementById('event-form-panel')
+    if(panel){
+      panel.classList.add('creating-event')
+      panel.classList.remove('flash-new')
+      void panel.offsetWidth
+      panel.classList.add('flash-new')
+    }
+    
+    // Enfocar el campo nombre
+    const nombre = document.getElementById('evt-nombre')
+    if(nombre){
+      nombre.focus()
+    }
+  })
   calendar.render()
+  // Inicial
+  rebuildEndHourOptions(); validateTimes(false)
   const refreshSize = () => { try { calendar.updateSize() } catch {} }
   // Forzar un par de recalculos tras el render por layout dinámico del sidebar
   requestAnimationFrame(() => { refreshSize(); requestAnimationFrame(refreshSize) })

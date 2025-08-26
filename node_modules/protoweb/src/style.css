@@ -1,3 +1,4 @@
+/* Tailwind (modo Vite): usar @import "tailwindcss" para habilitar preset unificado v4 */
 @import "tailwindcss";
 
 /* Estilos mínimos opcionales */
@@ -48,63 +49,6 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 	background-color: #fee2e2; /* red-100 */
 }
 
-/* ================== Vista mensual: altura base 132px ================== */
-.fc-dayGridMonth-view .fc-daygrid-day { /* toda la celda del día */
-	min-height: 132px; /* 32 (número) + 100 área eventos */
-	height: auto; /* permite crecer si hay más eventos */
-}
-.fc-dayGridMonth-view .fc-daygrid-day-frame {
-	display: flex;
-	flex-direction: column;
-	min-height: 132px;
-}
-.fc-dayGridMonth-view .fc-daygrid-day-top {
-	flex: 0 0 32px;
-	min-height: 32px;
-	height: 32px;
-	align-items: flex-start;
-	padding: 2px 4px 0 4px;
-}
-.fc-dayGridMonth-view .fc-daygrid-day-number {
-	font-size: 0.75rem;
-	font-weight: 500;
-	line-height: 1;
-	margin: 0;
-}
-.fc-dayGridMonth-view .fc-daygrid-day-events { /* base 100px */
-	flex: 0 0 auto;
-	min-height: 100px;
-	position: relative;
-	padding-bottom: 0; /* sin hueco extra */
-}
-/* Eventos de 25px exactos */
-.fc-dayGridMonth-view .fc-daygrid-event-harness,
-.fc-dayGridMonth-view .fc-daygrid-event-harness .fc-daygrid-event {
-	height: 25px !important;
-	min-height: 25px !important;
-}
-.fc-dayGridMonth-view .fc-daygrid-event {
-	margin: 0 !important;
-	padding: 2px 4px !important;
-	font-size: 0.65rem;
-	line-height: 1;
-	display: flex;
-	align-items: center;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-	box-sizing: border-box;
-}
-.fc-dayGridMonth-view .fc-daygrid-more-link {
-	display: flex;
-	align-items: center;
-	height: 25px;
-	padding: 2px 4px;
-	font-size: 0.65rem;
-	line-height: 1;
-}
-/* Eliminar márgenes que alteren la base */
-.fc-dayGridMonth-view .fc-daygrid-day-events > div { margin: 0 !important; }
 
 /* ================== Vista mensual (dayGridMonth) ================== */
 /* Estructura flexible de cada celda: 32px para número + bloque eventos */
@@ -284,6 +228,12 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 
 /* Eliminar aspect-ratio implícito que FullCalendar aplica cuando height es auto */
 #month-calendar .fc .fc-daygrid-body-natural { height: auto !important; }
+
+/* Overlay de carga calendario */
+#month-calendar { position:relative; }
+.calendar-loading-overlay { position:absolute; inset:0; background:rgba(255,255,255,0.65); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:30; }
+.calendar-loading-spinner { width:28px; height:28px; border:3px solid #cbd5e1; border-top-color:#0ea5e9; border-radius:50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 
 /* ================== Sidebar colapsable ================== */
 /* Estado base (ancho 16rem = w-64 ya definido en HTML) */

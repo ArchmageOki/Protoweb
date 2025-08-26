@@ -1,7 +1,7 @@
 // Renderizado de tabla y paginación
 import { formatDate } from './utils-fechas'
 import { clientes } from './data'
-import { filtered, sortState, pageSize, currentPage } from './state'
+import { filtered, sortState, pageSize, currentPage, setCurrentPage } from './state'
 
 export function applySort(list){
   const { key, dir } = sortState
@@ -9,6 +9,13 @@ export function applySort(list){
   return [...list].sort((a,b)=>{
     let va = a[key]
     let vb = b[key]
+    // Orden especial para VIP (boolean) -> true primero cuando dir=1
+    if(key==='vip'){
+      const ba = !!va, bb = !!vb
+      if(ba===bb) return 0
+      // dir=1 asc: true primero => invertimos comparación normal
+      return (ba? -1: 1) * dir
+    }
     if(key==='visitas' || key==='dineroTotal') return (Number(va)-Number(vb)) * dir
     if(va instanceof Date) va = va.getTime()
     if(vb instanceof Date) vb = vb.getTime()
@@ -20,7 +27,11 @@ export function applySort(list){
   })
 }
 export function totalPages(){ return Math.max(1, Math.ceil(filtered.length / pageSize)) }
-export function clampPage(){ if(currentPage>totalPages()) currentPage = totalPages(); if(currentPage<1) currentPage=1 }
+export function clampPage(){
+  const total = totalPages()
+  if(currentPage>total) setCurrentPage(total)
+  if(currentPage<1) setCurrentPage(1)
+}
 
 export function renderPagination(){
   const pagEl = document.getElementById('clientes-pagination')
@@ -68,6 +79,7 @@ export function renderClientes(list){
   pageItems.forEach(c => {
     const tr = document.createElement('tr')
     tr.innerHTML = `
+      <td class="px-2 py-2 text-center align-middle w-6">${c.vip ? '<span class="text-amber-500" title="VIP">⭐</span>' : ''}</td>
       <td data-col="nombre" class="px-3 py-2"><span class="cell-text" title="${c.nombre}">${c.nombre}</span></td>
       <td data-col="apellidos" class="px-3 py-2"><span class="cell-text" title="${c.apellidos}">${c.apellidos}</span></td>
       <td data-col="movil" class="px-3 py-2"><a class="cell-text cliente-phone-link hover:underline" title="Abrir WhatsApp" href="https://wa.me/34${c.movil}" target="_blank" rel="noopener">${c.movil}</a></td>
