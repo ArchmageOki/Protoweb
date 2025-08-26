@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="icon" type="image/svg+xml" href="/vite.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Conectar WhatsApp</title>
+	</head>
+	<body class="bg-gray-50 text-slate-800">
+		<div id="app" class="min-h-screen flex">
+			<!-- Sidebar se inyecta dinámicamente -->
+			<div class="flex-1 main-wrapper lg:ml-64 flex flex-col min-h-screen">
+				<header class="sticky top-0 z-30 bg-white border-b border-slate-200">
+					<div class="flex items-center gap-2 p-4">
+						<button id="sidebarOpen" class="lg:hidden p-2 rounded hover:bg-slate-100" aria-label="Abrir menú">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+						</button>
+						<h1 class="text-lg font-semibold">Conectar WhatsApp</h1>
+						<div class="ml-auto flex items-center gap-3">
+							<div class="relative" id="userMenuRoot">
+								<button id="userMenuButton" class="p-2 rounded-full border border-slate-300 hover:bg-slate-100 focus:outline-none" aria-haspopup="menu" aria-expanded="false">
+									<span class="sr-only">Menú de usuario</span>
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="size-5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.68 0-5.22-.586-7.5-1.632Z"/></svg>
+								</button>
+								<div id="userMenu" class="hidden absolute right-0 mt-2 w-44 rounded-md border border-slate-200 bg-white shadow-lg py-1 text-sm">
+									<button id="logoutBtn" class="w-full text-left px-3 py-2 hover:bg-slate-100 flex items-center gap-2" role="menuitem">
+										<svg xmlns="http://www.w3.org/2000/svg" class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6A2.25 2.25 0 0 0 5.25 5.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l3 3m0 0-3 3m3-3H3"/></svg>
+										Desconectarse
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
+				</header>
+				<main class="flex-1 p-6 grid place-items-center">
+					<section class="w-full max-w-sm">
+						<div class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 text-center">
+							<h2 class="text-base font-semibold mb-2">Sesión</h2>
+							<p id="statusText" class="text-xs text-slate-500 mb-4">Inicializando…</p>
+							<div id="qrWrap" class="aspect-square w-60 mx-auto flex items-center justify-center border border-dashed border-slate-300 rounded bg-slate-50">
+								<span class="text-slate-400 text-xs">Esperando QR…</span>
+							</div>
+							<button id="resetBtn" class="mt-4 w-full rounded-md bg-slate-800 text-white py-2 text-sm font-medium hover:bg-slate-700" type="button">Reiniciar sesión</button>
+							<p class="mt-4 text-[11px] text-slate-400 leading-relaxed">Escanea el código desde WhatsApp: Dispositivos vinculados &gt; Vincular dispositivo. Al conectarse serás dirigido a la página de Mensajes.</p>
+						</div>
+					</section>
+				</main>
+			</div>
+		</div>
+		<script type="module" src="/src/layout/inject-sidebar.js"></script>
+		<script type="module" src="/src/main.js"></script>
+		<script type="module" src="/src/user-menu.js"></script>
+		<script type="module" src="/src/auth-guard.js"></script>
+		<script type="module" src="/src/whatsapp-login.js"></script>
+	</body>
+</html>

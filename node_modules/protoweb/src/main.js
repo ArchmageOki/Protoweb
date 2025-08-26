@@ -5,11 +5,11 @@ import esLocale from '@fullcalendar/core/locales/es'
 import { ensureHolidayYears, isHoliday, ymd, getSampleEvents } from './calendar-utils'
 
 // Toggle sidebar móvil + colapso escritorio
-const sidebar = document.getElementById('sidebar')
-const overlay = document.getElementById('overlay')
-const openBtn = document.getElementById('sidebarOpen')
-const closeBtn = document.getElementById('sidebarClose')
-const collapseBtn = document.getElementById('sidebarCollapse')
+let sidebar = document.getElementById('sidebar')
+let overlay = document.getElementById('overlay')
+let openBtn = document.getElementById('sidebarOpen')
+let closeBtn = document.getElementById('sidebarClose')
+let collapseBtn = document.getElementById('sidebarCollapse')
 const BODY = document.body
 const STORAGE_KEY_UI = 'app.ui'
 
@@ -29,19 +29,29 @@ function closeSidebar() {
   overlay?.classList.add('hidden')
 }
 
-openBtn?.addEventListener('click', openSidebar)
-closeBtn?.addEventListener('click', closeSidebar)
-overlay?.addEventListener('click', closeSidebar)
+function bindSidebarEvents(){
+  sidebar = document.getElementById('sidebar')
+  overlay = document.getElementById('overlay')
+  openBtn = document.getElementById('sidebarOpen')
+  closeBtn = document.getElementById('sidebarClose')
+  collapseBtn = document.getElementById('sidebarCollapse')
+  openBtn?.addEventListener('click', openSidebar)
+  closeBtn?.addEventListener('click', closeSidebar)
+  overlay?.addEventListener('click', closeSidebar)
+  collapseBtn?.addEventListener('click', () => {
+    BODY.classList.toggle('sidebar-collapsed')
+    try {
+      const prev = JSON.parse(localStorage.getItem(STORAGE_KEY_UI) || '{}')
+      const next = { ...prev, sidebarCollapsed: BODY.classList.contains('sidebar-collapsed') }
+      localStorage.setItem(STORAGE_KEY_UI, JSON.stringify(next))
+    } catch {}
+    // Forzar recalculo en listeners externos (ej. calendario)
+    window.dispatchEvent(new Event('sidebar:toggle'))
+  })
+}
 
-// Colapso en escritorio
-collapseBtn?.addEventListener('click', () => {
-  BODY.classList.toggle('sidebar-collapsed')
-  try {
-    const prev = JSON.parse(localStorage.getItem(STORAGE_KEY_UI) || '{}')
-    const next = { ...prev, sidebarCollapsed: BODY.classList.contains('sidebar-collapsed') }
-    localStorage.setItem(STORAGE_KEY_UI, JSON.stringify(next))
-  } catch {}
-})
+bindSidebarEvents()
+window.addEventListener('sidebar:ready', bindSidebarEvents)
 
 // Inicializar calendario si existe el contenedor en la página actual
 const calendarEl = document.getElementById('calendar')
@@ -228,3 +238,142 @@ if (calendarEl) {
     setTimeout(refreshSize, 260)
   })
 }
+
+// ---------- CLIENTES ----------
+import { authFetch, apiBase } from './auth.js'
+
+async function clientsInit(){
+  const tbody = document.getElementById('clientsTbody')
+  if(!tbody) return // no está en esta página
+  const emptyMsg = document.getElementById('clientsEmpty')
+  const addBtn = document.getElementById('clientAddBtn')
+  const formWrap = document.getElementById('clientFormWrap')
+  const form = document.getElementById('clientForm')
+  const cancelBtn = document.getElementById('clientCancelBtn')
+  const reloadBtn = document.getElementById('clientReloadBtn')
+  const searchInput = document.getElementById('clientSearch')
+  let items = []
+  let filtered = []
+
+  function render(){
+    tbody.innerHTML = ''
+    filtered.forEach(c => {
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td class="px-3 py-2 align-top">
+          <div class="font-medium text-slate-800">${escapeHtml(c.name)}</div>
+          ${c.notes ? `<div class="text-xs text-slate-500 mt-0.5 line-clamp-2">${escapeHtml(c.notes)}</div>`:''}
+        </td>
+        <td class="px-3 py-2 align-top">${c.email ? `<a class="underline text-indigo-600" href="mailto:${escapeAttr(c.email)}">${escapeHtml(c.email)}</a>`:''}</td>
+        <td class="px-3 py-2 align-top">${c.phone?escapeHtml(c.phone):''}</td>
+        <td class="px-3 py-2 align-top">
+          <div class="flex gap-2">
+            <button data-act="edit" data-id="${c.id}" class="px-2 py-1 rounded border border-slate-300 text-xs hover:bg-slate-100">Editar</button>
+            <button data-act="del" data-id="${c.id}" class="px-2 py-1 rounded border border-rose-300 text-xs text-rose-600 hover:bg-rose-50">Borrar</button>
+          </div>
+        </td>`
+      tbody.appendChild(tr)
+    })
+    emptyMsg.classList.toggle('hidden', filtered.length>0)
+  }
+
+  function applyFilter(){
+    const q = (searchInput.value||'').toLowerCase().trim()
+    if(!q){ filtered = items.slice() }
+    else {
+      filtered = items.filter(c => [c.name,c.email,c.phone,c.notes].some(v => (v||'').toLowerCase().includes(q)))
+    }
+    render()
+  }
+
+  async function load(){
+    tbody.innerHTML = '<tr><td colspan="4" class="px-3 py-6 text-center text-xs text-slate-500">Cargando...</td></tr>'
+    emptyMsg.classList.add('hidden')
+    try {
+      const r = await authFetch(apiBase + '/data/clients')
+      if(!r.ok) throw new Error('fail')
+      const data = await r.json()
+      items = data.items||[]
+    } catch(e){
+      items = []
+    }
+    applyFilter()
+  }
+
+  addBtn?.addEventListener('click', ()=>{
+    form.reset()
+    form.id.value = ''
+    formWrap.classList.remove('hidden')
+    form.querySelector('[name=name]').focus()
+  })
+  cancelBtn?.addEventListener('click', ()=>{
+    formWrap.classList.add('hidden')
+  })
+  reloadBtn?.addEventListener('click', load)
+  searchInput?.addEventListener('input', applyFilter)
+
+  form?.addEventListener('submit', async (e)=>{
+    e.preventDefault()
+    const fd = new FormData(form)
+    const id = fd.get('id')
+    const payload = {
+      name: fd.get('name').trim(),
+      email: fd.get('email')?.trim()||null,
+      phone: fd.get('phone')?.trim()||null,
+      notes: fd.get('notes')?.trim()||null
+    }
+    let method = 'POST'
+    let url = apiBase + '/data/clients'
+    if(id){ method='PUT'; url += '/' + encodeURIComponent(id) }
+    const btn = document.getElementById('clientSaveBtn')
+    btn.disabled = true
+    btn.textContent = 'Guardando...'
+    try {
+      const r = await authFetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+      if(!r.ok) throw new Error('fail')
+      await load()
+      formWrap.classList.add('hidden')
+    } catch(e){
+      alert('Error guardando')
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'Guardar'
+    }
+  })
+
+  tbody.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button[data-act]')
+    if(!btn) return
+    const id = btn.getAttribute('data-id')
+    const act = btn.getAttribute('data-act')
+    if(act==='edit'){
+      const item = items.find(c=>c.id===id)
+      if(!item) return
+      form.name.value = item.name
+      form.email.value = item.email||''
+      form.phone.value = item.phone||''
+      form.notes.value = item.notes||''
+      form.id.value = item.id
+      formWrap.classList.remove('hidden')
+      form.name.focus()
+    } else if(act==='del'){
+      if(!confirm('¿Borrar este cliente?')) return
+      const r = await authFetch(apiBase + '/data/clients/' + encodeURIComponent(id), { method:'DELETE' })
+      if(r.ok){
+        items = items.filter(c=>c.id!==id)
+        applyFilter()
+      } else {
+        alert('No se pudo borrar')
+      }
+    }
+  })
+
+  load()
+}
+
+function escapeHtml(s){
+  return (''+s).replace(/[&<>"']/g, ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[ch]))
+}
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;') }
+
+clientsInit()

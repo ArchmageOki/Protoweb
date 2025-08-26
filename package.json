@@ -3,9 +3,10 @@
   "private": true,
   "workspaces": ["apps/*", "services/*", "packages/*"],
   "scripts": {
-    "dev": "concurrently -k -n WEB,WA -c cyan,green \"npm:dev:web\" \"npm:dev:whatsapp\"",
+    "dev": "concurrently -k -n WEB,WA,API -c cyan,green,magenta \"npm:dev:web\" \"npm:dev:whatsapp\" \"npm:dev:api\"",
     "dev:web": "npm --workspace apps/web run dev -- --host 0.0.0.0",
     "dev:whatsapp": "npm --workspace services/whatsapp run dev",
+    "dev:api": "npm --workspace services/api run dev",
     "build": "npm --workspace apps/web run build",
     "build:web": "npm --workspace apps/web run build",
     "preview": "npm --workspace apps/web run preview -- --host 0.0.0.0",

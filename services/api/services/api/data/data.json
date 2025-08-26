@@ -1,0 +1,61 @@
+{
+  "users": {
+    "test1@example.com": {
+      "id": "rBCUC43uD0F1GMdEDuTe0",
+      "email": "test1@example.com",
+      "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$D3EMWM4VnqeUMmBz1T7XbQ$emgpwV4DyHfEJkNEq8BIvJwIInTCF+sdcsrVWnnZGh4",
+      "failed_attempts": 0,
+      "locked_until": null,
+      "created_at": "2025-08-25T17:57:52.609Z",
+      "last_login_at": null,
+      "password_version": 1
+    },
+    "juanma2751995@gmail.com": {
+      "id": "1i1ZZOXCBeAxGGYF9x8tp",
+      "email": "juanma2751995@gmail.com",
+      "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$ikL3SYAn4NwU3NHCer6+Uw$7kaYRbux9XuG7ih0GgxUFxE3hW/FNuLdMR1wQAu9aVQ",
+      "failed_attempts": 0,
+      "locked_until": null,
+      "created_at": "2025-08-25T18:08:17.699Z",
+      "last_login_at": "2025-08-25T18:08:46.826Z",
+      "password_version": 1
+    },
+    "juanmatest@testing.com": {
+      "id": "XIF8UcbySm5xk2aTn9ZK4",
+      "email": "juanmatest@testing.com",
+      "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$XJISB04/PsMcpkyQbqufpw$WDnGSsj0eAkO9A2c72lsf6o5enUSNB04GTM6otMNCl8",
+      "failed_attempts": 5,
+      "locked_until": "2025-08-25T18:14:32.093Z",
+      "created_at": "2025-08-25T18:13:31.947Z",
+      "last_login_at": "2025-08-25T18:13:31.979Z",
+      "password_version": 1
+    }
+  },
+  "usersById": {
+    "rBCUC43uD0F1GMdEDuTe0": "test1@example.com",
+    "1i1ZZOXCBeAxGGYF9x8tp": "juanma2751995@gmail.com",
+    "XIF8UcbySm5xk2aTn9ZK4": "juanmatest@testing.com"
+  },
+  "refresh": {
+    "PxJgzXH3p7nXxHi2qv7cg": {
+      "userId": "1i1ZZOXCBeAxGGYF9x8tp",
+      "exp": 1756750126,
+      "revoked": false
+    },
+    "0yuiVpC3QzSlFaeRvApNy": {
+      "userId": "XIF8UcbySm5xk2aTn9ZK4",
+      "exp": 1756750411,
+      "revoked": true
+    },
+    "affa0f38-444f-43b6-95c6-63052c5cbaf9": {
+      "userId": "XIF8UcbySm5xk2aTn9ZK4",
+      "exp": 1756750411,
+      "revoked": false
+    },
+    "jpZd-6J5-M3vMGpddX998": {
+      "userId": "XIF8UcbySm5xk2aTn9ZK4",
+      "exp": 1756750411,
+      "revoked": false
+    }
+  }
+}

@@ -1,8 +1,9 @@
 // Inicialización de la tabla de clientes (bootstrap logic extraída)
 // Idempotente: se puede llamar varias veces sin duplicar listeners
-import { filtered, setPageSize, setCurrentPage } from './state'
+import { filtered, setPageSize, setCurrentPage, setFiltered } from './state'
 import { renderClientes, toggleSort } from './render'
 import { aplicarFiltros } from './filters'
+import { cargarClientes, clientes } from './data'
 import { nuevoCliente, editarCliente } from './editor'
 import './attachments' // side-effects (visor de adjuntos)
 
@@ -13,8 +14,11 @@ export function initClientes(){
   const run = () => {
     if(_inited) return
     _inited = true
-    // Render inicial mediante filtros
-    aplicarFiltros()
+    // Cargar datos reales y luego aplicar filtros
+    cargarClientes().then(()=>{
+      setFiltered(window.__clientes_debug = [...clientes])
+      aplicarFiltros()
+    })
     // Sort headers (delegación)
     const thead = document.querySelector('thead')
     thead?.addEventListener('click', e => {

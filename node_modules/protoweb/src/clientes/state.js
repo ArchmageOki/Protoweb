@@ -1,7 +1,7 @@
 // Estado compartido para clientes
 import { clientes } from './data'
 
-export let filtered = clientes.slice()
+export let filtered = clientes.slice() // se actualizará tras carga API
 export const columnFilters = {}
 export const sortState = { key: null, dir: 1 }
 export let pageSize = 10

@@ -1,5 +1,5 @@
 // Editor lateral de clientes (extraído de clientes.js)
-import { clientes } from './data'
+import { clientes, crearCliente, actualizarCliente } from './data'
 import { toInputDate, toDisplayDate, parseDisplayDate, formatDate } from './utils-fechas'
 import { aplicarFiltros } from './filters'
 import { renderClienteHistory } from './history'
@@ -167,7 +167,10 @@ function mountClienteEditor(){
     let cli = id ? clientes.find(c=>c.id===id) : null
     const nombre = fd.get('nombre').toString().trim()
     const apellidos = fd.get('apellidos').toString().trim()
-    const movil = fd.get('movil').toString().trim()
+  // Normalizar móvil: quitar no dígitos, conservar últimos 9 si >9
+  let movilRaw = fd.get('movil').toString().trim()
+  let movil = movilRaw.replace(/\D+/g,'')
+  if(movil.length>9) movil = movil.slice(-9)
     const dni = fd.get('dni').toString().trim()
     const instagram = fd.get('instagram').toString().trim()
     const direccion = fd.get('direccion')?.toString().trim() || ''
@@ -180,17 +183,88 @@ function mountClienteEditor(){
     if(movilErrEl){ movilErrEl.classList.add('hidden'); movilErrEl.textContent='' }
     if(!/^[0-9]{9}$/.test(movil)){ if(movilErrEl){ movilErrEl.textContent='Móvil requerido (9 dígitos)'; movilErrEl.classList.remove('hidden') } form.movil.classList.add('cliente-editor-invalid'); form.movil.focus(); return } else { form.movil.classList.remove('cliente-editor-invalid') }
     let createdId=null
-    if(!cli){
-      const newId = 'C' + String(clientes.length + 1).padStart(4,'0')
-      cli = { id:newId, nombre, apellidos, movil, dni, instagram: instagram.startsWith('@')?instagram:('@'+instagram), direccion, codigoPostal, nacimiento, visitas:0, ultimaCita:null, notas, citas:[], dineroTotal:0 }
-      clientes.push(cli); createdId=newId
-    } else {
-      cli.nombre=nombre; cli.apellidos=apellidos; cli.movil=movil; cli.dni=dni; cli.instagram=instagram.startsWith('@')?instagram:('@'+instagram); cli.direccion=direccion; cli.codigoPostal=codigoPostal; cli.nacimiento=nacimiento; cli.visitas=visitas; cli.ultimaCita=ultimaCita; cli.notas=notas
-    }
+    // Área de estado
+  let statusEl = form.querySelector('.cliente-editor-status')
+  if(!statusEl){ statusEl = document.createElement('div'); statusEl.className='cliente-editor-status text-xs text-slate-500'; form.appendChild(statusEl) }
+  const updateStatus = (msg, cls='text-slate-500')=>{ statusEl.textContent=msg; statusEl.className='cliente-editor-status mt-1 '+cls }
+    const submitBtn = document.querySelector('.cliente-editor-footer button.btn-primary')
+    submitBtn.disabled = true
+    const prevLabel = submitBtn.textContent
+  submitBtn.textContent = 'Guardando...';
+  updateStatus('Guardando cambios...');
+  (async () => {
+      try {
+        if(!cli){
+          const nuevo = await crearCliente({ first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: 0, total_amount: 0, notes: notas })
+          createdId = nuevo.id
+        } else {
+          await actualizarCliente(cli.id, { first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: visitas, last_appointment_at: ultimaCita? ultimaCita.toISOString(): null, notes: notas })
+        }
     form.dataset.original = JSON.stringify(collectFormSnapshot(form))
-    closeClienteEditor(true)
     aplicarFiltros()
-    if(createdId){ setTimeout(()=>{ const row=document.querySelector(`tr.cliente-row[data-id="${createdId}"]`); if(row){ row.classList.add('cliente-row-flash'); setTimeout(()=>row.classList.remove('cliente-row-flash'),2000) } },40) }
+  // Mostrar globo flotante central
+  showClienteBalloon(createdId ? 'Cliente guardado correctamente' : 'Cliente modificado correctamente')
+  if(createdId){ setTimeout(()=>{ const row=document.querySelector(`tr.cliente-row[data-id="${createdId}"]`); if(row){ row.classList.add('cliente-row-flash'); setTimeout(()=>row.classList.remove('cliente-row-flash'),2000) } },40) }
+  // Cerrar tras breve delay
+  setTimeout(()=> closeClienteEditor(true), 300)
+// Globo flotante central para confirmación
+function showClienteBalloon(msg){
+  let balloon = document.createElement('div')
+  balloon.className = 'cliente-balloon-fixed'
+  balloon.textContent = msg
+  Object.assign(balloon.style, {
+    position: 'fixed',
+    left: '50%',
+    top: '32px',
+    transform: 'translateX(-50%)',
+    background: 'rgba(34,197,94,0.75)',
+    color: '#fff',
+    fontSize: '1.1rem',
+    fontWeight: 'bold',
+    padding: '16px 32px',
+    borderRadius: '16px',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+    zIndex: 9999,
+    opacity: '0',
+    transition: 'opacity 0.2s'
+  })
+  document.body.appendChild(balloon)
+  setTimeout(()=>{ balloon.style.opacity='1' },10)
+  setTimeout(()=>{ balloon.style.opacity='0'; setTimeout(()=>balloon.remove(),300) }, 1800)
+}
+      } catch(e){
+        let errMsg = 'Error guardando cliente'
+        let field = null
+        if(e && e.message === 'create_failed' && e.response){
+          try {
+            const r = await e.response.json()
+            if(r.error === 'duplicate_mobile'){
+              errMsg = 'Ya existe un usuario con el mismo móvil'; field = 'movil'
+            } else if(r.error === 'duplicate_dni'){
+              errMsg = 'Ya existe un usuario con el mismo DNI'; field = 'dni'
+            }
+          } catch{}
+        }
+        if(field){
+          const el = form.querySelector(`[name="${field}"]`)
+          const errEl = form.querySelector(`[data-error-for="${field}"]`)
+          let campo = field === 'dni' ? 'DNI' : 'móvil'
+          let customMsg = `Error al guardar, el ${campo} ya pertenece a un cliente.`
+          if(el){
+            el.classList.add('cliente-editor-invalid')
+            el.style.borderColor = '#dc2626'
+            el.style.boxShadow = '0 0 0 2px #dc262644'
+          }
+          if(errEl){ errEl.textContent = customMsg; errEl.classList.remove('hidden') }
+          updateStatus(customMsg,'text-rose-600')
+        } else {
+          updateStatus('Error al guardar, el dato ya pertenece a un cliente.','text-rose-600')
+        }
+      } finally {
+        submitBtn.disabled = false
+        submitBtn.textContent = prevLabel
+      }
+    })()
   })
   document.addEventListener('keydown', e=>{ if(e.key==='Escape' && !overlay.classList.contains('hidden')){ const av=document.querySelector('.attachment-viewer-overlay.is-open'); if(av) return; closeClienteEditor(true) } })
   setTimeout(()=>{ try { const p=overlay.querySelector('.cliente-editor-panel'); if(p){ const prev=p.getAttribute('data-min-width'); const recompute=()=>{ const clone=p.cloneNode(true); clone.style.position='absolute'; clone.style.left='-9999px'; clone.style.top='-9999px'; clone.style.visibility='hidden'; clone.style.height='auto'; clone.style.maxWidth='none'; const baseWidth=p.getBoundingClientRect().width||420; clone.style.width=baseWidth+'px'; document.body.appendChild(clone); const metricsBlock=clone.querySelector('.grid.grid-cols-3'); const labels=metricsBlock?Array.from(metricsBlock.querySelectorAll('label')).slice(0,3):[]; let result=320; if(labels.length){ const singleLineHeight=Math.max(...labels.map(l=>l.offsetHeight)); result=baseWidth; for(let w=Math.floor(baseWidth); w>=280; w-=4){ clone.style.width=w+'px'; const wrapped=labels.some(l=>l.offsetHeight>singleLineHeight); if(wrapped){ result=w+4; break } if(w===280) result=w } } document.body.removeChild(clone); result=Math.max(280, Math.min(640,result)); return result }; const newMin=recompute(); if(newMin && newMin !== Number(prev)){ p.setAttribute('data-min-width', String(newMin)) } } } catch{} },30)

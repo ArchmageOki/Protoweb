@@ -5,6 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TailAdmin — Login</title>
+  <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body class="bg-gray-50 text-slate-800">
     <main class="min-h-screen grid place-items-center p-6">
@@ -14,6 +15,9 @@
             <img src="/vite.svg" alt="Logo" class="mx-auto size-10" />
             <h1 class="mt-3 text-xl font-semibold">TailAdmin</h1>
             <p class="mt-1 text-slate-500 text-sm">Inicia sesión para continuar</p>
+            <div id="postRegister" class="hidden mt-4 text-left rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] leading-snug text-amber-700">
+              Cuenta creada. Revisa la consola del servidor (modo dev) para el enlace de verificación y confirma tu email.
+            </div>
           </div>
 
           <form id="loginForm" class="space-y-4" novalidate>
@@ -46,7 +50,7 @@
                 <input type="checkbox" class="size-4" />
                 <span>Recordarme</span>
               </label>
-              <a href="#" class="text-sm text-slate-600 hover:underline">¿Olvidaste tu contraseña?</a>
+              <a href="forgot.html" class="text-sm text-slate-600 hover:underline">¿Olvidaste tu contraseña?</a>
             </div>
             <button type="submit" class="w-full rounded-md bg-slate-800 text-white py-2.5 text-sm font-medium hover:bg-slate-700">
               Iniciar sesión
@@ -54,12 +58,21 @@
           </form>
 
           <p class="mt-6 text-center text-sm text-slate-500">
-            ¿No tienes cuenta? <a href="#" class="text-slate-700 hover:underline">Crear cuenta</a>
+            ¿No tienes cuenta? <a href="register.html" class="text-slate-700 hover:underline">Crear cuenta</a>
           </p>
         </div>
       </section>
     </main>
 
     <script type="module" src="/src/login.js"></script>
+    <script type="module">
+      (function(){
+        const params = new URLSearchParams(location.search)
+        if(params.get('registered')==='1'){
+          const box = document.getElementById('postRegister')
+          if(box) box.classList.remove('hidden')
+        }
+      })()
+    </script>
   </body>
   </html>
