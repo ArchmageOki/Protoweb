@@ -75,31 +75,15 @@ export async function initSchema(){
       postal_code text,
       birth_date date,
       visits_count int not null default 0,
-  completed_event_ids text[] not null default '{}',
       total_amount numeric(14,2) not null default 0,
       last_appointment_at timestamptz null,
       notes text,
-      is_vip boolean not null default false
+    is_vip boolean not null default false,
+    completed_event_ids text[] not null default '{}'::text[]
     );
   -- Asegurar columna is_vip si la tabla ya existía
   alter table clients add column if not exists is_vip boolean not null default false;
-  alter table clients add column if not exists completed_event_ids text[] not null default '{}';
-  -- Rellenar completed_event_ids a partir de eventos ya completados (una sola vez para arrays vacíos)
-  do $$
-  begin
-    -- Sólo si la columna existe (ya garantizado) y hay clientes con array vacío
-    begin
-      update clients c set completed_event_ids = sub.ids::text[] from (
-        select client_id, array_agg(id order by coalesce(completed_at,start_at) desc) as ids
-        from calendar_events where is_completed=true and client_id is not null group by client_id
-      ) sub
-      where c.id = sub.client_id and (c.completed_event_ids is null or cardinality(c.completed_event_ids)=0);
-    exception when others then null; end;
-    -- Sincronizar visits_count con longitud del array (mantener compatibilidad)
-    begin
-      update clients set visits_count = cardinality(completed_event_ids);
-    exception when others then null; end;
-  end $$;
+  alter table clients add column if not exists completed_event_ids text[] not null default '{}'::text[];
     create index if not exists idx_clients_user on clients(user_id);
     -- Migrar unicidad móvil/dni a ámbito por usuario
     do $$ begin
@@ -359,7 +343,7 @@ export async function pgCreateClient(id, userId, data){
     ) values(
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
     ) returning *`, [
-      id,userId,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip,completed_event_ids
+      id,userId,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip, completed_event_ids
     ])
   return rows[0]
 }
@@ -389,7 +373,7 @@ export async function pgUpdateClient(userId, id, data){
     mobile=existing.mobile,
     instagram=existing.instagram, dni=existing.dni, address=existing.address, postal_code=existing.postal_code, birth_date=existing.birth_date,
   visits_count=existing.visits_count, total_amount=existing.total_amount, last_appointment_at=existing.last_appointment_at,
-  notes=existing.notes, is_vip=existing.is_vip, completed_event_ids=existing.completed_event_ids
+  notes=existing.notes, is_vip=existing.is_vip, completed_event_ids=existing.completed_event_ids||[]
   } = data||{}
   const finalMobile = mobile
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || existing.full_name
@@ -436,6 +420,28 @@ export async function pgUpdateEvent(userId, id, { title, description=null, start
 }
 export async function pgCompleteEvent(userId, id){
   const { rows } = await pool.query(`update calendar_events set is_completed=true, completed_at=coalesce(completed_at, now()), updated_at=now() where user_id=$1 and id=$2 and is_completed is not true returning *`, [userId,id])
+  return rows[0]||null
+}
+// Recalcular estadísticas de un cliente a partir de eventos completados
+export async function pgRecalcClientCompletedStats(userId, clientId){
+  // Se toma la "última cita" como el end_at más reciente (si end_at es null, se usa start_at)
+  const { rows } = await pool.query(`with agg as (
+    select coalesce(array_agg(id order by coalesce(end_at,start_at) desc), '{}') as ids,
+           count(*) as visits,
+           coalesce(sum(coalesce(total_amount,0)),0) as total,
+           max(coalesce(end_at,start_at)) as last_completed
+    from calendar_events
+    where user_id=$1 and client_id=$2 and is_completed=true and deleted is not true
+  )
+  update clients c
+    set completed_event_ids = agg.ids,
+        visits_count = agg.visits,
+        total_amount = agg.total,
+        last_appointment_at = agg.last_completed,
+        updated_at = now()
+  from agg
+  where c.user_id=$1 and c.id=$2
+  returning c.*`, [userId, clientId])
   return rows[0]||null
 }
 export async function pgDeleteEvent(userId, id){

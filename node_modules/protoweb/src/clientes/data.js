@@ -17,13 +17,13 @@ function mapApiToCliente(r){
     direccion: r.address || '',
     codigoPostal: r.postal_code || '',
     nacimiento,
-  completedEventIds: Array.isArray(r.completed_event_ids)? r.completed_event_ids : [],
-  visitas: Array.isArray(r.completed_event_ids)? r.completed_event_ids.length : (r.visits_count ?? 0),
+    visitas: r.visits_count ?? 0,
     dineroTotal: r.total_amount != null ? Number(r.total_amount) : 0,
     ultimaCita: ultima,
     citas: [], // pendiente: cargar citas reales cuando exista endpoint
   notas: r.notes || '',
-  vip: !!r.is_vip
+  vip: !!r.is_vip,
+  completed_event_ids: Array.isArray(r.completed_event_ids)? r.completed_event_ids : []
   }
 }
 

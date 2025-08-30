@@ -225,8 +225,7 @@ function mountClienteEditor(){
           const nuevo = await crearCliente({ first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: 0, total_amount: 0, notes: notas, is_vip: vip })
           createdId = nuevo.id
         } else {
-          // visits_count ya es derivado de completed_event_ids; no enviamos visitas manuales
-          await actualizarCliente(cli.id, { first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, last_appointment_at: ultimaCita? ultimaCita.toISOString(): null, notes: notas, is_vip: vip })
+          await actualizarCliente(cli.id, { first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: visitas, last_appointment_at: ultimaCita? ultimaCita.toISOString(): null, notes: notas, is_vip: vip })
         }
     form.dataset.original = JSON.stringify(collectFormSnapshot(form))
     aplicarFiltros()
