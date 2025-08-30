@@ -3,6 +3,7 @@ import { clientes, crearCliente, actualizarCliente } from './data'
 import { toInputDate, toDisplayDate, parseDisplayDate, formatDate } from './utils-fechas'
 import { aplicarFiltros } from './filters'
 import { renderClienteHistory } from './history'
+import { authFetch, apiBase } from '../auth'
 
 let clienteEditorMounted = false
 let clienteEditorMinOpenUntil = 0
@@ -34,6 +35,8 @@ function openClienteEditor(id){
   cancelClienteEditorClosing()
   clienteEditorSession++
   populateClienteEditor(cliente)
+  // Cargar histórico de citas completadas en segundo plano
+  fetchClienteHistory(cliente).catch(()=>{})
   const ov = document.querySelector('.cliente-editor-overlay')
   if(ov){
     ov.classList.remove('hidden')
@@ -222,7 +225,8 @@ function mountClienteEditor(){
           const nuevo = await crearCliente({ first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: 0, total_amount: 0, notes: notas, is_vip: vip })
           createdId = nuevo.id
         } else {
-          await actualizarCliente(cli.id, { first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, visits_count: visitas, last_appointment_at: ultimaCita? ultimaCita.toISOString(): null, notes: notas, is_vip: vip })
+          // visits_count ya es derivado de completed_event_ids; no enviamos visitas manuales
+          await actualizarCliente(cli.id, { first_name: nombre, last_name: apellidos, mobile: movil, dni, instagram: instagram.replace(/^@+/,'') || null, address: direccion, postal_code: codigoPostal, birth_date: nacimiento? nacimiento.toISOString().slice(0,10): null, last_appointment_at: ultimaCita? ultimaCita.toISOString(): null, notes: notas, is_vip: vip })
         }
     form.dataset.original = JSON.stringify(collectFormSnapshot(form))
     aplicarFiltros()
@@ -302,6 +306,30 @@ function populateClienteEditor(c){
   form.dataset.original = JSON.stringify(collectFormSnapshot(form))
   updateDirtyIndicator(form)
   renderClienteHistory(c)
+}
+async function fetchClienteHistory(cliente){
+  try {
+    const r = await authFetch(apiBase + '/data/clients/'+encodeURIComponent(cliente.id)+'/appointments/completed?limit=200')
+    if(!r.ok) return
+    const j = await r.json()
+    const items = Array.isArray(j.items)? j.items : []
+    // Mapear a forma esperada por renderClienteHistory: { fecha, notas, priceTotal, pricePaid, adjuntos:[] }
+    const mapped = items.map(ev=>({
+      // Convertir a Date para que formatDate() genere dd/mm/aaaa correctamente
+      fecha: (function(){
+        const raw = ev.completed_at || ev.start_at
+        if(!raw) return null
+        const d = new Date(raw)
+        return isNaN(d.getTime()) ? null : d
+      })(),
+      notas: ev.notes || ev.description || '',
+      priceTotal: ev.total_amount!=null? Number(ev.total_amount): null,
+      pricePaid: ev.paid_amount!=null? Number(ev.paid_amount): null,
+      adjuntos: []
+    }))
+    cliente.citas = mapped
+    renderClienteHistory(cliente)
+  } catch(e){ console.error('[cliente][history] fallo', e.message) }
 }
 function adaptDateInputsForIOS(root){
   const ua = navigator.userAgent || ''

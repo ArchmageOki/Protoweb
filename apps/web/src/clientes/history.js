@@ -20,7 +20,12 @@ export function renderClienteHistory(cliente){
         <div class="mt-2 hidden max-h-52 overflow-auto border border-slate-200 rounded bg-slate-50" data-history-panel>
           <table class="w-full text-[11px]">
             <thead class="bg-slate-100 text-slate-600 sticky top-0">
-              <tr><th class="text-left px-2 py-1 font-medium">Fecha</th><th class="text-left px-2 py-1 font-medium">Notas</th><th class="text-left px-2 py-1 font-medium whitespace-nowrap" title="Importe total de la cita">Importe</th><th class="text-left px-2 py-1 font-medium">Adjuntos</th></tr>
+              <tr>
+                <th class="text-left px-2 py-1 font-medium whitespace-nowrap w-0" style="width:1%">Fecha</th>
+                <th class="text-left px-2 py-1 font-medium whitespace-nowrap w-0" style="width:1%" title="Importe total de la cita">Importe</th>
+                <th class="text-left px-2 py-1 font-medium">Notas</th>
+                <th class="text-left px-2 py-1 font-medium">Adjuntos</th>
+              </tr>
             </thead>
             <tbody data-history-rows></tbody>
           </table>
@@ -45,7 +50,8 @@ export function renderClienteHistory(cliente){
       const count = (ci.adjuntos && ci.adjuntos.length) || 0
       const adjBadge = count ? `<button type="button" data-cita-adj-btn data-cita-index="${idx}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-medium hover:bg-slate-300 transition" title="Ver ${count} adjunto${count!==1?'s':''}">📎 ${count}</button>` : '—'
       const importe = (ci.priceTotal!=null ? ci.priceTotal.toFixed(2)+' €' : '—') + (ci.pricePaid!=null && ci.pricePaid !== ci.priceTotal ? ` <span class="text-[10px] text-slate-500" title="Pagado">(${ci.pricePaid.toFixed(2)} €)</span>` : '')
-      tr.innerHTML = `<td class="px-2 py-1 whitespace-nowrap">${fecha}</td><td class="px-2 py-1">${ci.notas || '—'}</td><td class="px-2 py-1 whitespace-nowrap" title="Total${ci.pricePaid!=null?` / Pagado`:''}">${importe}</td><td class="px-2 py-1 text-slate-600">${adjBadge}</td>`
+  // Nuevo orden: Fecha | Importe | Notas | Adjuntos
+  tr.innerHTML = `<td class="px-2 py-1 whitespace-nowrap w-0" style="width:1%">${fecha}</td><td class="px-2 py-1 whitespace-nowrap w-0" style="width:1%" title="Total${ci.pricePaid!=null?` / Pagado`:''}">${importe}</td><td class="px-2 py-1">${ci.notas || '—'}</td><td class="px-2 py-1 text-slate-600">${adjBadge}</td>`
       tbody.appendChild(tr)
     })
   }

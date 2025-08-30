@@ -15,6 +15,16 @@ import { authFetch, apiBase } from './auth.js'
       const currentSpan = document.getElementById('google-cal-current')
       const syncBtn = document.getElementById('google-cal-sync') // sólo existe en calendario.html
       const disconnectBtn = document.getElementById('google-cal-disconnect')
+      function calendarNameFromCache(id){
+        if(!id) return id
+        try {
+          const cache = JSON.parse(localStorage.getItem('google.calendars')||'{}')
+          if(cache && typeof cache === 'object' && cache[id] && cache[id].summary){
+            return cache[id].summary || id
+          }
+        } catch{}
+        return id
+      }
       if(data.connected){
         const pending = data.account?.pending
         st.classList.remove('hidden'); st.textContent = pending ? 'Conectado (selecciona calendario)' : 'Conectado con Google'; st.className='text-xs font-normal px-2 py-1 rounded ' + (pending? 'bg-amber-100 text-amber-700':'bg-green-100 text-green-700')
@@ -28,7 +38,7 @@ import { authFetch, apiBase } from './auth.js'
           picker?.classList.remove('hidden')
           disconnectBtn?.classList.remove('hidden')
         }
-        if(data.account?.calendar_id && currentSpan) currentSpan.textContent = data.account.calendar_id || '—'
+        if(data.account?.calendar_id && currentSpan) currentSpan.textContent = calendarNameFromCache(data.account.calendar_id) || '—'
         const scope = data.account?.scope || ''
         if(scope && !scope.includes('calendar.readonly')) reauthInline?.classList.remove('hidden')
         else reauthInline?.classList.add('hidden')
@@ -94,7 +104,19 @@ import { authFetch, apiBase } from './auth.js'
     input.value=''
     confirmBtn.disabled = true
     input.focus()
-    function close(){ modal.classList.add('hidden'); input.value=''; confirmBtn.disabled=true }
+    function close(){
+      modal.classList.add('hidden');
+      input.value='';
+      confirmBtn.disabled=true;
+      document.removeEventListener('keydown', onKey)
+    }
+    function onKey(e){
+      if(e.key==='Escape' || e.key==='Esc'){
+        e.preventDefault();
+        close()
+      }
+    }
+    document.addEventListener('keydown', onKey)
     input.addEventListener('input', ()=>{ confirmBtn.disabled = input.value.trim() !== 'DESCONECTAR' })
     cancelBtn?.addEventListener('click', ()=> close(), { once:true })
     confirmBtn.addEventListener('click', async ()=>{
@@ -121,9 +143,11 @@ import { authFetch, apiBase } from './auth.js'
 
   const pickerBtn = document.getElementById('google-cal-picker-btn')
   const dropdown = document.getElementById('google-cal-dropdown')
+  let pickerBusy = false
   pickerBtn?.addEventListener('click', async ()=>{
-    if(!dropdown) return
+    if(!dropdown || pickerBusy) return
     if(dropdown.classList.contains('hidden')){
+      pickerBusy = true
       dropdown.innerHTML = '<div class="p-2 text-slate-500">Cargando…</div>'
       dropdown.classList.remove('hidden')
       try {
@@ -145,6 +169,12 @@ import { authFetch, apiBase } from './auth.js'
         }
         const j = await r.json()
         dropdown.innerHTML = ''
+        // Cachear nombres para mostrarlos luego en el span principal
+        try {
+          const cachePrev = JSON.parse(localStorage.getItem('google.calendars')||'{}')
+          j.items.forEach(c=>{ cachePrev[c.id] = { summary: c.summary || c.id, primary: !!c.primary } })
+          localStorage.setItem('google.calendars', JSON.stringify(cachePrev))
+        } catch{}
         j.items.forEach(cal => {
           const item = document.createElement('button')
           item.type = 'button'
@@ -156,17 +186,27 @@ import { authFetch, apiBase } from './auth.js'
               const r2 = await authFetch(apiBase + '/data/integrations/google/calendar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ calendar_id: cal.id }) })
               if(!r2.ok) throw new Error()
               dropdown.classList.add('hidden')
+              // Actualizar visual inmediatamente usando el nombre legible
+              const currentSpan = document.getElementById('google-cal-current')
+              if(currentSpan) currentSpan.textContent = cal.summary || cal.id
               refreshGoogleStatus()
             } catch { dropdown.innerHTML = '<div class="p-2 text-red-600">Error</div>' }
           })
           dropdown.appendChild(item)
         })
-      } catch { if(!dropdown.innerHTML.includes('Permisos insuficientes')) dropdown.innerHTML = '<div class="p-2 text-red-600">Error cargando</div>' }
+  } catch { if(!dropdown.innerHTML.includes('Permisos insuficientes')) dropdown.innerHTML = '<div class="p-2 text-red-600">Error cargando</div>' }
+  finally { pickerBusy = false }
     } else {
       dropdown.classList.add('hidden')
     }
   })
-  document.addEventListener('click', (e)=>{ if(dropdown && !dropdown.contains(e.target) && e.target!==pickerBtn) dropdown.classList.add('hidden') })
+  document.addEventListener('click', (e)=>{
+    if(!dropdown) return
+    const inButton = e.target && (e.target===pickerBtn || e.target.closest?.('#google-cal-picker-btn'))
+    if(!dropdown.contains(e.target) && !inButton){
+      dropdown.classList.add('hidden')
+    }
+  })
 
   refreshGoogleStatus()
 })()

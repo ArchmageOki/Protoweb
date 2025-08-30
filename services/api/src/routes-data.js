@@ -3,8 +3,10 @@ import { requireAuth } from './middleware/auth.js'
 import { nanoid } from 'nanoid'
 import { 
   pgCreateClient, pgListClients, pgGetClient, pgUpdateClient, pgDeleteClient,
-  pgCreateEvent, pgListEvents, pgGetEvent, pgUpdateEvent, pgDeleteEvent,
-  pgGetWhatsappSession, pgUpsertWhatsappSession
+  pgCreateEvent, pgListEvents, pgGetEvent, pgUpdateEvent, pgDeleteEvent, pgCompleteEvent,
+  pgGetWhatsappSession, pgUpsertWhatsappSession,
+  pgGetUserSettings, pgUpsertUserSettings,
+  pgListCompletedEventsForClient
 } from './db/pg.js'
 import { buildAuthUrl, exchangeCode, upsertAccount, getAccount, applySync, createRemoteEvent, patchRemoteEvent, deleteRemoteEvent, validateAndConsumeState, createOauthState, listCalendars, setCalendar } from './integrations/googleCalendar.js'
 import { pool } from './db/pg.js'
@@ -51,6 +53,21 @@ r.get('/clients/:id', async (req,res)=>{
   res.json({ ok:true, item: row })
 })
 
+// Histórico de citas completadas por cliente
+r.get('/clients/:id/appointments/completed', async (req,res)=>{
+  const client = await pgGetClient(req.user.id, req.params.id)
+  if(!client) return res.status(404).json({ error:'not_found' })
+  const { limit } = req.query
+  let lim = parseInt(limit,10); if(isNaN(lim) || lim<=0) lim=200
+  try {
+    const items = await pgListCompletedEventsForClient(req.user.id, req.params.id, lim)
+    res.json({ ok:true, items })
+  } catch(e){
+    console.error('[clients][history] error', e.message)
+    res.status(500).json({ error:'history_failed' })
+  }
+})
+
 r.put('/clients/:id', async (req,res)=>{
   const body = req.body||{}
   if(body.first_name && typeof body.first_name !== 'string') return res.status(400).json({ error:'invalid_input' })
@@ -89,12 +106,28 @@ r.get('/events', async (req,res)=>{
 })
 
 r.post('/events', async (req,res)=>{
-  const { title, description=null, start_at, end_at, all_day=false } = req.body||{}
+  const { title, description=null, start_at, end_at, all_day=false, client_id=null, completed_design=false, extra_check_1=false, extra_check_2=false, extra_check_3=false, total_amount=null, paid_amount=null, notes=null, is_completed=false } = req.body||{}
   if(typeof title !== 'string' || !title.trim()) return res.status(400).json({ error:'invalid_input' })
   if(!start_at || !end_at) return res.status(400).json({ error:'invalid_input' })
   const s = new Date(start_at); const e = new Date(end_at)
   if(isNaN(s) || isNaN(e) || e <= s) return res.status(400).json({ error:'invalid_range' })
-  const row = await pgCreateEvent(nanoid(), req.user.id, { title: title.trim(), description, start_at: s.toISOString(), end_at: e.toISOString(), all_day: !!all_day })
+  // Cliente obligatorio
+  if(!client_id || typeof client_id !== 'string' || !client_id.trim()) return res.status(400).json({ error:'client_required' })
+  // Validar importes
+  let tAmt = total_amount
+  let pAmt = paid_amount
+  if(tAmt!==null && tAmt!==undefined && tAmt!==''){ tAmt = Number(tAmt); if(!isFinite(tAmt) || tAmt < 0) return res.status(400).json({ error:'invalid_total_amount' }) }
+  else tAmt = null
+  if(pAmt!==null && pAmt!==undefined && pAmt!==''){ pAmt = Number(pAmt); if(!isFinite(pAmt) || pAmt < 0) return res.status(400).json({ error:'invalid_paid_amount' }) }
+  else pAmt = null
+  if(tAmt!=null && pAmt!=null && pAmt > tAmt) return res.status(400).json({ error:'paid_gt_total' })
+  let finalClientId = null
+  if(client_id){
+    const c = await pgGetClient(req.user.id, client_id)
+    if(!c) return res.status(400).json({ error:'invalid_client' })
+    finalClientId = c.id
+  }
+  const row = await pgCreateEvent(nanoid(), req.user.id, { title: title.trim(), description, start_at: s.toISOString(), end_at: e.toISOString(), all_day: !!all_day, client_id: finalClientId, completed_design: !!completed_design, extra_check_1: !!extra_check_1, extra_check_2: !!extra_check_2, extra_check_3: !!extra_check_3, total_amount: tAmt, paid_amount: pAmt, notes, is_completed: !!is_completed })
   // Si hay cuenta Google, crear también remoto (async best-effort)
   getAccount(req.user.id).then(acc=>{
     if(acc){
@@ -113,12 +146,26 @@ r.get('/events/:id', async (req,res)=>{
 })
 
 r.put('/events/:id', async (req,res)=>{
-  const { title, description=null, start_at, end_at, all_day=false } = req.body||{}
+  const { title, description=null, start_at, end_at, all_day=false, client_id=null, completed_design=false, extra_check_1=false, extra_check_2=false, extra_check_3=false, total_amount=null, paid_amount=null, notes=null, is_completed=false } = req.body||{}
   if(typeof title !== 'string' || !title.trim()) return res.status(400).json({ error:'invalid_input' })
   if(!start_at || !end_at) return res.status(400).json({ error:'invalid_input' })
   const s = new Date(start_at); const e = new Date(end_at)
   if(isNaN(s) || isNaN(e) || e <= s) return res.status(400).json({ error:'invalid_range' })
-  const row = await pgUpdateEvent(req.user.id, req.params.id, { title: title.trim(), description, start_at: s.toISOString(), end_at: e.toISOString(), all_day: !!all_day })
+  // Cliente obligatorio
+  if(!client_id || typeof client_id !== 'string' || !client_id.trim()) return res.status(400).json({ error:'client_required' })
+  // Validar importes
+  let tAmt = total_amount
+  let pAmt = paid_amount
+  if(tAmt!==null && tAmt!==undefined && tAmt!==''){ tAmt = Number(tAmt); if(!isFinite(tAmt) || tAmt < 0) return res.status(400).json({ error:'invalid_total_amount' }) } else tAmt = null
+  if(pAmt!==null && pAmt!==undefined && pAmt!==''){ pAmt = Number(pAmt); if(!isFinite(pAmt) || pAmt < 0) return res.status(400).json({ error:'invalid_paid_amount' }) } else pAmt = null
+  if(tAmt!=null && pAmt!=null && pAmt > tAmt) return res.status(400).json({ error:'paid_gt_total' })
+  let finalClientId = null
+  if(client_id){
+    const c = await pgGetClient(req.user.id, client_id)
+    if(!c) return res.status(400).json({ error:'invalid_client' })
+    finalClientId = c.id
+  }
+  const row = await pgUpdateEvent(req.user.id, req.params.id, { title: title.trim(), description, start_at: s.toISOString(), end_at: e.toISOString(), all_day: !!all_day, client_id: finalClientId, completed_design: !!completed_design, extra_check_1: !!extra_check_1, extra_check_2: !!extra_check_2, extra_check_3: !!extra_check_3, total_amount: tAmt, paid_amount: pAmt, notes, is_completed: !!is_completed })
   if(!row) return res.status(404).json({ error:'not_found' })
   getAccount(req.user.id).then(acc=>{
     if(acc && row.google_event_id){
@@ -130,17 +177,62 @@ r.put('/events/:id', async (req,res)=>{
   res.json({ ok:true, item: row })
 })
 
+// Marcar evento como completado (idempotente). Incrementa visits_count del cliente asociado una sola vez.
+r.post('/events/:id/complete', async (req,res)=>{
+  try {
+    const ev = await pgGetEvent(req.user.id, req.params.id)
+    if(!ev) return res.status(404).json({ error:'not_found' })
+    if(ev.is_completed){ return res.json({ ok:true, item: ev, already:true }) }
+    const updated = await pgCompleteEvent(req.user.id, req.params.id)
+    if(!updated) return res.status(400).json({ error:'cannot_complete' })
+    if(updated.client_id){
+      try {
+        await pool.query(`update clients set 
+          completed_event_ids = case when NOT (completed_event_ids @> ARRAY[$3]::text[]) then array_prepend($3, completed_event_ids) else completed_event_ids end,
+          visits_count = cardinality(case when NOT (completed_event_ids @> ARRAY[$3]::text[]) then array_prepend($3, completed_event_ids) else completed_event_ids end),
+          last_appointment_at = now(),
+          updated_at=now()
+          where user_id=$1 and id=$2`, [req.user.id, updated.client_id, updated.id])
+      } catch(e){ console.error('[events][complete][visits]', e.message) }
+    }
+    res.json({ ok:true, item: updated })
+  } catch(e){
+    console.error('[events][complete] error', e.message)
+    res.status(500).json({ error:'complete_failed' })
+  }
+})
+
 r.delete('/events/:id', async (req,res)=>{
   console.log('[events][delete] intento', req.params.id, 'user', req.user.id)
   const existing = await pgGetEvent(req.user.id, req.params.id)
   if(!existing) return res.status(404).json({ error:'not_found' })
-  // Intentar borrar remoto primero (best-effort)
+  // Borrado remoto best-effort
   if(existing.google_event_id){
     getAccount(req.user.id).then(acc=>{ if(acc){ deleteRemoteEvent(req.user.id, existing.google_event_id).catch(err=> console.error('[google][delete] fallo', err.message)) } })
   }
   const ok = await pgDeleteEvent(req.user.id, req.params.id)
   console.log('[events][delete] resultado', ok)
   if(!ok) return res.status(404).json({ error:'not_found' })
+  // Limpieza robusta: eliminar el id de cualquier client.completed_event_ids (aunque el flag is_completed no se hubiese guardado correctamente) y recalcular.
+  try {
+    await pool.query(`with affected as (
+        select id from clients where user_id=$1 and completed_event_ids @> array[$2]::text[]
+      ), cleaned as (
+        update clients set completed_event_ids = array_remove(completed_event_ids, $2)
+        where user_id=$1 and completed_event_ids @> array[$2]::text[]
+        returning id
+      ), agg as (
+        select client_id, array_agg(id order by coalesce(completed_at,start_at) desc) as ids, max(coalesce(completed_at,start_at)) as lastc
+        from calendar_events where user_id=$1 and client_id in (select id from affected) and is_completed=true and deleted is not true
+        group by client_id
+      )
+      update clients c set
+        completed_event_ids = coalesce((select ids from agg a where a.client_id=c.id), '{}'),
+        visits_count = coalesce(cardinality((select ids from agg a where a.client_id=c.id)),0),
+        last_appointment_at = (select lastc from agg a where a.client_id=c.id),
+        updated_at=now()
+      where c.user_id=$1 and c.id in (select id from affected);`, [req.user.id, existing.id])
+  } catch(e){ console.error('[events][delete][cleanup_all]', e.message) }
   res.json({ ok:true })
 })
 
@@ -242,6 +334,24 @@ r.put('/whatsapp/session', async (req,res)=>{
   if(status && !['inactive','connecting','ready','error'].includes(status)) return res.status(400).json({ error:'invalid_status' })
   const saved = await pgUpsertWhatsappSession(req.user.id, { phone_number, status, session_json })
   res.json({ ok:true, session: saved })
+})
+
+// ---- USER SETTINGS ----
+r.get('/settings', async (req,res)=>{
+  const row = await pgGetUserSettings(req.user.id)
+  if(!row) return res.json({ ok:true, settings: { extra_checks:{} } })
+  res.json({ ok:true, settings: { extra_checks: row.extra_checks || {} } })
+})
+r.put('/settings', async (req,res)=>{
+  const body = req.body||{}
+  const { extra_checks={} } = body
+  try {
+    const saved = await pgUpsertUserSettings(req.user.id, { extra_checks })
+    res.json({ ok:true, settings: { extra_checks: saved.extra_checks } })
+  } catch(e){
+    console.error('[settings][put] error', e.message)
+    res.status(400).json({ error:'save_failed' })
+  }
 })
 
 export default r

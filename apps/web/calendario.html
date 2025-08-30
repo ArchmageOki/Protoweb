@@ -51,11 +51,53 @@
             </div>
             <!-- Formulario (1/3) -->
             <div id="event-form-panel" class="rounded-lg border border-slate-200 bg-white p-4 lg:w-1/3 self-start">
-              <h2 id="event-form-title" class="font-semibold">Nuevo evento</h2>
+              <div class="flex items-center justify-between gap-2">
+                <h2 id="event-form-title" class="font-semibold">Nuevo evento</h2>
+                <span id="event-finished-badge" class="hidden text-[11px] font-medium px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">Evento finalizado</span>
+              </div>
               <form class="mt-4 space-y-4" aria-label="Formulario crear evento (visual)">
                 <div class="grid gap-1">
-                  <label for="evt-nombre" class="text-sm font-medium">Nombre del evento</label>
-                  <input id="evt-nombre" type="text" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Ej: Consulta inicial" />
+                  <div class="flex items-center justify-between gap-2">
+                    <label for="evt-nombre" class="text-sm font-medium">Título</label>
+                    <label class="flex items-center gap-1 text-[11px] font-normal select-none cursor-pointer" title="Generar título automáticamente según reglas de ajustes">
+                      <input id="evt-titulo-auto" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+                      <span>Título automático</span>
+                    </label>
+                  </div>
+                  <div class="relative">
+                    <input id="evt-nombre" type="text" class="peer rounded-md border border-slate-300 pl-3 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 w-full transition disabled:bg-slate-100 disabled:text-slate-500" placeholder="Ej: Consulta inicial" />
+                    <span id="evt-auto-hint" class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-400 text-[11px] hidden">auto</span>
+                  </div>
+                  <p id="evt-titulo-auto-msg" class="hidden text-[11px] text-slate-500 leading-snug">Generado automáticamente: <span class="font-medium" id="evt-titulo-auto-prev"></span></p>
+                </div>
+                <!-- Selección de cliente -->
+                <div class="grid gap-1">
+                  <label class="text-sm font-medium">Cliente</label>
+                  <div class="relative">
+                    <span id="evt-client-vip-icon" class="hidden absolute inset-y-0 left-2 flex items-center text-amber-500 text-sm" aria-hidden="true">👑</span>
+                    <input id="evt-client-search" type="text" autocomplete="off" class="rounded-md border border-slate-300 px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-slate-400 transition-[padding]" placeholder="Buscar cliente por nombre, móvil o Instagram..." />
+                    <button type="button" id="evt-client-clear" class="hidden absolute inset-y-0 right-2 my-auto text-slate-500 hover:text-slate-700 text-xs" title="Quitar cliente">✕</button>
+                    <input id="evt-client-id" type="hidden" />
+                    <div id="evt-client-results" class="hidden absolute z-40 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-lg max-h-56 overflow-auto text-xs divide-y divide-slate-100"></div>
+                  </div>
+                  <div id="evt-client-create-inline" class="hidden mt-2 border border-slate-200 rounded p-3 space-y-2 bg-white">
+                    <!-- Fila 1: Nombre y Apellidos -->
+                    <div class="grid grid-cols-2 gap-2">
+                      <input id="new-client-name" type="text" class="rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Nombre" />
+                      <input id="new-client-last-name" type="text" class="rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Apellidos" />
+                    </div>
+                    <!-- Fila 2: Móvil e Instagram -->
+                    <div class="grid grid-cols-2 gap-2">
+                      <input id="new-client-mobile" type="text" class="rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Móvil *" />
+                      <input id="new-client-instagram" type="text" class="rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Instagram" />
+                    </div>
+                    <div class="flex gap-2 items-center">
+                      <button type="button" id="new-client-save" class="px-3 py-1.5 text-xs rounded bg-slate-900 text-white hover:bg-slate-800">Crear</button>
+                      <button type="button" id="new-client-cancel" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100">Cancelar</button>
+                      <span id="new-client-error" class="text-[11px] text-red-600 ml-auto"></span>
+                    </div>
+                  </div>
+                  <p id="evt-client-error" class="text-xs text-red-600 mt-1 hidden"></p>
                 </div>
                 <div class="grid gap-1">
                   <label for="evt-fecha" class="text-sm font-medium">Fecha</label>
@@ -65,6 +107,7 @@
                       <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008Z"/></svg>
                     </span>
                   </div>
+                  <p id="evt-fecha-error" class="text-xs text-red-600 mt-1 hidden"></p>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                   <!-- Timepicker inicio -->
@@ -121,21 +164,32 @@
                 <p id="time-error" class="text-xs text-red-600 mt-1 hidden">La hora de fin debe ser posterior a la hora de inicio.</p>
                 <div class="grid grid-cols-2 gap-4">
                   <div class="grid gap-1 min-w-0">
-                    <label for="evt-precio-total" class="text-sm font-medium">Precio total (€)</label>
-                    <input id="evt-precio-total" type="number" step="0.01" min="0" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="0.00" />
+                    <label for="evt-precio-total" class="text-sm font-medium">Precio total</label>
+                    <input id="evt-precio-total" inputmode="decimal" pattern="[0-9]+([\.,][0-9]{0,2})?" class="price-input w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="0.00" autocomplete="off" value="0" />
                   </div>
                   <div class="grid gap-1 min-w-0">
-                    <label for="evt-precio-pagado" class="text-sm font-medium">Precio pagado (€)</label>
-                    <input id="evt-precio-pagado" type="number" step="0.01" min="0" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="0.00" />
+                    <label for="evt-precio-pagado" class="text-sm font-medium">Precio pagado</label>
+                    <input id="evt-precio-pagado" inputmode="decimal" pattern="[0-9]+([\.,][0-9]{0,2})?" class="price-input w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="0.00" autocomplete="off" value="0" />
                   </div>
                 </div>
+                <p id="evt-precios-error" class="text-xs text-red-600 mt-1 hidden"></p>
                 <div class="grid gap-1">
                   <label for="evt-notas" class="text-sm font-medium">Notas</label>
                   <textarea id="evt-notas" rows="4" class="resize-y rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" placeholder="Observaciones..." ></textarea>
                 </div>
-                <div class="flex items-center gap-2 pt-1">
-                  <input id="evt-diseno-terminado" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
-                  <label for="evt-diseno-terminado" class="text-sm font-medium select-none">Diseño terminado</label>
+                <div class="space-y-2 pt-1">
+                  <div class="flex items-center gap-2" data-extra-check="1">
+                    <input id="evt-diseno-terminado" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+                    <label for="evt-diseno-terminado" class="text-sm font-medium select-none">Diseño terminado</label>
+                  </div>
+                  <div class="flex items-center gap-2" data-extra-check="2">
+                    <input id="evt-extra-check-2" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+                    <label for="evt-extra-check-2" class="text-sm font-medium select-none">Extra check 2</label>
+                  </div>
+                  <div class="flex items-center gap-2" data-extra-check="3">
+                    <input id="evt-extra-check-3" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+                    <label for="evt-extra-check-3" class="text-sm font-medium select-none">Extra check 3</label>
+                  </div>
                 </div>
                 <div>
                   <div class="flex gap-2 items-center form-actions">
@@ -149,6 +203,10 @@
                       <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.74 9l-.346 9m-4.788 0L9.26 9M9.75 4.5h4.5m-8.25 2.25h12M5.25 6.75 6 19.125A2.25 2.25 0 0 0 8.243 21h7.514A2.25 2.25 0 0 0 18 19.125L18.75 6.75"/></svg>
                       <span>Eliminar</span>
                     </button>
+                    <button id="evt-complete" type="button" class="hidden ml-auto inline-flex items-center gap-2 rounded-md border border-green-300 text-green-700 px-4 py-2 text-sm hover:bg-green-50" title="Marcar evento como finalizado">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>
+                      <span>Finalizar evento</span>
+                    </button>
                   </div>
                 </div>
               </form>
@@ -157,6 +215,19 @@
         </main>
       </div>
     </div>
+
+  <!-- Modal confirmación finalizar evento -->
+  <div id="event-complete-confirm" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-5 border border-slate-200">
+      <h3 class="text-sm font-semibold mb-2 text-green-700">Finalizar evento</h3>
+      <p class="text-xs text-slate-600 mb-4">¿Confirmas que el evento <span id="event-complete-title" class="font-medium"></span> ha finalizado? Se sumará 1 visita al cliente.</p>
+      <div class="flex justify-end gap-2 text-xs">
+        <button type="button" id="event-complete-cancel" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100">Cancelar</button>
+        <button type="button" id="event-complete-confirm-btn" class="px-3 py-1.5 rounded bg-green-600 text-white hover:bg-green-500 disabled:opacity-60">Confirmar</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="/src/auth-guard.js"></script>
   <script type="module" src="/src/layout/inject-sidebar.js"></script>
@@ -331,4 +402,17 @@
       })();
     </script>
   </body>
+    <!-- Modal confirmación eliminación evento -->
+    <div id="event-delete-confirm" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+      <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+      <div class="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-5 border border-slate-200 animate-fade-in">
+        <h3 class="text-sm font-semibold mb-2">Confirmar eliminación</h3>
+        <p class="text-xs text-slate-600 mb-4">¿Seguro que quieres eliminar <span id="event-delete-title" class="font-medium"></span>? Esta acción no se puede deshacer.</p>
+        <div class="flex justify-end gap-2 text-xs">
+          <button type="button" id="event-delete-cancel" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100">Cancelar</button>
+          <button type="button" id="event-delete-confirm-btn" class="px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-60">Borrar</button>
+        </div>
+      </div>
+    </div>
+  </html>
 </html>

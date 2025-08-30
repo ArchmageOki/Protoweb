@@ -143,6 +143,10 @@ export async function applySync(userId){
         continue
       }
       const allDay = !!ev.start?.date
+      if(allDay){
+        // Omitimos eventos de día completo: no se guardan en calendar_events
+        continue
+      }
       const startISO = ev.start?.dateTime || (ev.start?.date+'T00:00:00Z')
       let endISO
       if(allDay){

@@ -85,7 +85,7 @@ async function fetchEvents(fromISO, toISO){
         start,
         end,
         allDay: isAll,
-        extendedProps:{ __persisted:true, google_event_id: ev.google_event_id||null, description: ev.description||null }
+        extendedProps:{ __persisted:true, google_event_id: ev.google_event_id||null, description: ev.description||null, client_id: ev.client_id||null, completed_design: ev.completed_design, extra_check_1: ev.extra_check_1, extra_check_2: ev.extra_check_2, extra_check_3: ev.extra_check_3, total_amount: ev.total_amount, paid_amount: ev.paid_amount, notes: ev.notes, is_completed: ev.is_completed }
       }
     })
 }

@@ -199,6 +199,11 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 #event-form-panel.creating-event .date-picker-wrapper input {
 	background:#ffffff !important;
 }
+
+/* ====== Extra checks rendering ====== */
+.fc-daygrid-event.extra-check-border { border: 1px solid currentColor !important; }
+.fc-daygrid-event.extra-check-shadow { box-shadow: 0 0 0 1px currentColor, 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent) !important; }
+.fc-daygrid-event .extra-check-icon { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; margin-right:2px; font-size:0.6rem; line-height:1; }
 @keyframes placeholderPulse {
 	0% { background-position: 0% 0; }
 	100% { background-position: -200% 0; }
@@ -246,6 +251,8 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 	body.sidebar-collapsed #sidebar { width: 4rem; padding-left: 0.75rem; padding-right: 0.75rem; }
 	body.sidebar-collapsed #sidebar .brand-text { display:none; }
 	body.sidebar-collapsed #sidebar nav a .label { display:none; }
+	body.sidebar-collapsed #sidebar [data-submenu-trigger] .label { display:none; }
+	body.sidebar-collapsed #sidebar [data-submenu] { display:none !important; }
 	body.sidebar-collapsed #sidebar nav a { justify-content: center; padding-left: 0.5rem; padding-right: 0.5rem; }
 	body.sidebar-collapsed #sidebar nav a svg { margin-right:0; }
 	body.sidebar-collapsed #sidebar .collapse-icon[data-dir="left"] { display:none; }
@@ -261,6 +268,12 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 /* ===== Tabla clientes: scroll horizontal ===== */
 .clients-table-nowrap{ table-layout:auto; }
 .clients-table-nowrap th, .clients-table-nowrap td { white-space:nowrap; }
+
+/* ===== Eventos completados ===== */
+.fc-daygrid-event.event-completed { position:relative; background:#e2e8f0 !important; color:#475569 !important; border:1px solid #cbd5e1 !important; border-radius:4px; opacity:0.85; }
+.fc-daygrid-event.event-completed:hover { opacity:1; }
+/* Franja verde eliminada para eventos completados (antes se usaba ::before) */
+.fc-daygrid-event .completed-check { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; margin-right:2px; font-size:10px; line-height:1; color:#16a34a; }
 .clients-table { width:100%; }
 .clientes-filter-input { background:#ffffff !important; }
 .clientes-filter-input:focus { background:#ffffff !important; }

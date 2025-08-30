@@ -68,21 +68,51 @@ export async function initSchema(){
       first_name text,
       last_name text,
       full_name text,
-  mobile text unique,
-  instagram text,
-  dni text unique,
+      mobile text,
+      instagram text,
+      dni text,
       address text,
       postal_code text,
       birth_date date,
       visits_count int not null default 0,
+  completed_event_ids text[] not null default '{}',
       total_amount numeric(14,2) not null default 0,
       last_appointment_at timestamptz null,
-    notes text,
-    is_vip boolean not null default false
+      notes text,
+      is_vip boolean not null default false
     );
   -- Asegurar columna is_vip si la tabla ya existía
   alter table clients add column if not exists is_vip boolean not null default false;
+  alter table clients add column if not exists completed_event_ids text[] not null default '{}';
+  -- Rellenar completed_event_ids a partir de eventos ya completados (una sola vez para arrays vacíos)
+  do $$
+  begin
+    -- Sólo si la columna existe (ya garantizado) y hay clientes con array vacío
+    begin
+      update clients c set completed_event_ids = sub.ids::text[] from (
+        select client_id, array_agg(id order by coalesce(completed_at,start_at) desc) as ids
+        from calendar_events where is_completed=true and client_id is not null group by client_id
+      ) sub
+      where c.id = sub.client_id and (c.completed_event_ids is null or cardinality(c.completed_event_ids)=0);
+    exception when others then null; end;
+    -- Sincronizar visits_count con longitud del array (mantener compatibilidad)
+    begin
+      update clients set visits_count = cardinality(completed_event_ids);
+    exception when others then null; end;
+  end $$;
     create index if not exists idx_clients_user on clients(user_id);
+    -- Migrar unicidad móvil/dni a ámbito por usuario
+    do $$ begin
+      -- Eliminar constraints únicas globales previas si existieran
+      if exists (select 1 from pg_constraint where conrelid = 'clients'::regclass and contype='u' and conname like '%mobile%') then
+        begin alter table clients drop constraint if exists clients_mobile_key; exception when others then null; end;
+      end if;
+      if exists (select 1 from pg_constraint where conrelid = 'clients'::regclass and contype='u' and conname like '%dni%') then
+        begin alter table clients drop constraint if exists clients_dni_key; exception when others then null; end;
+      end if;
+    end $$;
+    create unique index if not exists u_clients_user_mobile on clients(user_id, mobile) where mobile is not null and mobile <> '';
+    create unique index if not exists u_clients_user_dni on clients(user_id, dni) where dni is not null and dni <> '';
     -- Eventos de calendario per-user
     create table if not exists calendar_events (
       id text primary key,
@@ -92,21 +122,49 @@ export async function initSchema(){
       start_at timestamptz not null,
       end_at timestamptz not null,
       all_day boolean not null default false,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now(),
       google_event_id text null,
       google_etag text null,
       deleted boolean not null default false,
-      calendar_id text null
+      calendar_id text null,
+      client_id text null references clients(id) on delete set null,
+      completed_design boolean not null default false,
+  extra_check_1 boolean not null default false,
+  extra_check_2 boolean not null default false,
+  extra_check_3 boolean not null default false,
+  is_completed boolean not null default false,
+  completed_at timestamptz null,
+      total_amount numeric(14,2) null,
+      paid_amount numeric(14,2) null,
+      notes text null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
     );
   -- Asegurar columnas nuevas si la tabla ya existía antes de añadir soporte Google
   alter table calendar_events add column if not exists google_event_id text null;
   alter table calendar_events add column if not exists google_etag text null;
   alter table calendar_events add column if not exists deleted boolean not null default false;
   alter table calendar_events add column if not exists calendar_id text null;
+  alter table calendar_events add column if not exists client_id text null;
+  alter table calendar_events add column if not exists completed_design boolean not null default false;
+  alter table calendar_events add column if not exists extra_check_1 boolean not null default false;
+  alter table calendar_events add column if not exists extra_check_2 boolean not null default false;
+  alter table calendar_events add column if not exists extra_check_3 boolean not null default false;
+  alter table calendar_events add column if not exists is_completed boolean not null default false;
+  alter table calendar_events add column if not exists completed_at timestamptz null;
+  alter table calendar_events add column if not exists total_amount numeric(14,2) null;
+  alter table calendar_events add column if not exists paid_amount numeric(14,2) null;
+  alter table calendar_events add column if not exists notes text null;
+  -- Asegurar foreign key client_id
+  do $$
+  begin
+    if not exists (select 1 from pg_constraint where conname = 'fk_calendar_events_client') then
+      alter table calendar_events add constraint fk_calendar_events_client foreign key (client_id) references clients(id) on delete set null;
+    end if;
+  exception when others then null; end $$;
     create index if not exists idx_events_user on calendar_events(user_id);
     create index if not exists idx_events_user_start on calendar_events(user_id,start_at);
     create index if not exists idx_events_google_evt on calendar_events(google_event_id);
+    create index if not exists idx_events_user_client on calendar_events(user_id, client_id);
   -- Sustituimos índice parcial (que impedía ON CONFLICT inference) por índice completo
   drop index if exists u_events_user_google;
   create unique index if not exists u_events_user_google on calendar_events(user_id, google_event_id);
@@ -150,6 +208,13 @@ export async function initSchema(){
       phone_number text null,
       status text not null default 'inactive',
       session_json jsonb null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    -- Ajustes de usuario (persistencia de configuraciones UI)
+    create table if not exists user_settings (
+      user_id text primary key references users(id) on delete cascade,
+      extra_checks jsonb not null default '{}'::jsonb,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
@@ -281,19 +346,20 @@ export async function pgCreateClient(id, userId, data){
     first_name=null, last_name=null,
     mobile=null,
     instagram=null, dni=null, address=null, postal_code=null, birth_date=null,
-  visits_count=0, total_amount=0, last_appointment_at=null, notes=null, is_vip=false
+  visits_count=0, total_amount=0, last_appointment_at=null, notes=null, is_vip=false, completed_event_ids=[]
   } = data||{}
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || '—'
+  // Unicidad móvil/dni se garantiza por índices compuestos (user_id,mobile) y (user_id,dni)
   const finalMobile = mobile
   // Normalizar fechas vacías a null
   const bd = (birth_date && String(birth_date).trim()) ? birth_date : null
   const laa = (last_appointment_at && String(last_appointment_at).trim()) ? last_appointment_at : null
   const { rows } = await pool.query(`insert into clients(
-      id,user_id,notes,first_name,last_name,full_name,mobile,instagram,dni,address,postal_code,birth_date,visits_count,total_amount,last_appointment_at,is_vip
+      id,user_id,notes,first_name,last_name,full_name,mobile,instagram,dni,address,postal_code,birth_date,visits_count,total_amount,last_appointment_at,is_vip,completed_event_ids
     ) values(
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
     ) returning *`, [
-      id,userId,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip
+      id,userId,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip,completed_event_ids
     ])
   return rows[0]
 }
@@ -302,7 +368,7 @@ export async function pgListClients(userId){
     id,user_id,created_at,updated_at,
     full_name,first_name,last_name,
     mobile,instagram,dni,address,postal_code,birth_date,
-  visits_count,total_amount,last_appointment_at,notes,is_vip
+  visits_count,total_amount,last_appointment_at,notes,is_vip,completed_event_ids
     from clients where user_id=$1 order by created_at desc`, [userId])
   return rows
 }
@@ -311,7 +377,7 @@ export async function pgGetClient(userId, id){
     id,user_id,created_at,updated_at,
     full_name,first_name,last_name,
     mobile,instagram,dni,address,postal_code,birth_date,
-  visits_count,total_amount,last_appointment_at,notes,is_vip
+  visits_count,total_amount,last_appointment_at,notes,is_vip,completed_event_ids
     from clients where user_id=$1 and id=$2`, [userId,id])
   return rows[0]||null
 }
@@ -323,7 +389,7 @@ export async function pgUpdateClient(userId, id, data){
     mobile=existing.mobile,
     instagram=existing.instagram, dni=existing.dni, address=existing.address, postal_code=existing.postal_code, birth_date=existing.birth_date,
   visits_count=existing.visits_count, total_amount=existing.total_amount, last_appointment_at=existing.last_appointment_at,
-  notes=existing.notes, is_vip=existing.is_vip
+  notes=existing.notes, is_vip=existing.is_vip, completed_event_ids=existing.completed_event_ids
   } = data||{}
   const finalMobile = mobile
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || existing.full_name
@@ -331,9 +397,9 @@ export async function pgUpdateClient(userId, id, data){
   const laa = (last_appointment_at && String(last_appointment_at).trim()) ? last_appointment_at : null
   const { rows } = await pool.query(`update clients set
       notes=$3,first_name=$4,last_name=$5,full_name=$6,mobile=$7,instagram=$8,dni=$9,address=$10,postal_code=$11,birth_date=$12,
-      visits_count=$13,total_amount=$14,last_appointment_at=$15,is_vip=$16,updated_at=now()
+      visits_count=$13,total_amount=$14,last_appointment_at=$15,is_vip=$16,completed_event_ids=$17,updated_at=now()
     where user_id=$1 and id=$2 returning *`, [
-      userId,id,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip
+      userId,id,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip,completed_event_ids
     ])
   return rows[0]||null
 }
@@ -343,9 +409,12 @@ export async function pgDeleteClient(userId, id){
 }
 
 // --------- CALENDAR EVENTS ---------
-export async function pgCreateEvent(id, userId, { title, description=null, start_at, end_at, all_day=false }){
-  const { rows } = await pool.query(`insert into calendar_events(id,user_id,title,description,start_at,end_at,all_day)
-    values($1,$2,$3,$4,$5,$6,$7) returning *`, [id,userId,title,description,start_at,end_at,all_day])
+// NOTE: requiere migración previa:
+// alter table calendar_events add column if not exists is_completed boolean default false;
+// alter table calendar_events add column if not exists completed_at timestamptz null;
+export async function pgCreateEvent(id, userId, { title, description=null, start_at, end_at, all_day=false, client_id=null, completed_design=false, extra_check_1=false, extra_check_2=false, extra_check_3=false, total_amount=null, paid_amount=null, notes=null, is_completed=false }){
+  const { rows } = await pool.query(`insert into calendar_events(id,user_id,title,description,start_at,end_at,all_day,client_id,completed_design,extra_check_1,extra_check_2,extra_check_3,total_amount,paid_amount,notes,is_completed,completed_at)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, case when $16=true then now() else null end) returning *`, [id,userId,title,description,start_at,end_at,all_day,client_id,completed_design,extra_check_1,extra_check_2,extra_check_3,total_amount,paid_amount,notes,is_completed])
   return rows[0]
 }
 export async function pgListEvents(userId, from=null, to=null){
@@ -360,14 +429,25 @@ export async function pgGetEvent(userId, id){
   const { rows } = await pool.query('select * from calendar_events where user_id=$1 and id=$2', [userId,id])
   return rows[0]||null
 }
-export async function pgUpdateEvent(userId, id, { title, description=null, start_at, end_at, all_day=false }){
-  const { rows } = await pool.query(`update calendar_events set title=$3,description=$4,start_at=$5,end_at=$6,all_day=$7,updated_at=now()
-    where user_id=$1 and id=$2 returning *`, [userId,id,title,description,start_at,end_at,all_day])
+export async function pgUpdateEvent(userId, id, { title, description=null, start_at, end_at, all_day=false, client_id=null, completed_design=false, extra_check_1=false, extra_check_2=false, extra_check_3=false, total_amount=null, paid_amount=null, notes=null, is_completed=false }){
+  const { rows } = await pool.query(`update calendar_events set title=$3,description=$4,start_at=$5,end_at=$6,all_day=$7,client_id=$8,completed_design=$9,extra_check_1=$10,extra_check_2=$11,extra_check_3=$12,total_amount=$13,paid_amount=$14,notes=$15,is_completed=$16,completed_at=case when $16=true and completed_at is null then now() else completed_at end,updated_at=now()
+    where user_id=$1 and id=$2 returning *`, [userId,id,title,description,start_at,end_at,all_day,client_id,completed_design,extra_check_1,extra_check_2,extra_check_3,total_amount,paid_amount,notes,is_completed])
+  return rows[0]||null
+}
+export async function pgCompleteEvent(userId, id){
+  const { rows } = await pool.query(`update calendar_events set is_completed=true, completed_at=coalesce(completed_at, now()), updated_at=now() where user_id=$1 and id=$2 and is_completed is not true returning *`, [userId,id])
   return rows[0]||null
 }
 export async function pgDeleteEvent(userId, id){
   const { rowCount } = await pool.query('delete from calendar_events where user_id=$1 and id=$2', [userId,id])
   return rowCount>0
+}
+// Listar eventos completados de un cliente (histórico)
+export async function pgListCompletedEventsForClient(userId, clientId, limit=200){
+  const { rows } = await pool.query(`select id, title, description, start_at, end_at, total_amount, paid_amount, notes, completed_at
+    from calendar_events where user_id=$1 and client_id=$2 and deleted is not true and is_completed=true
+    order by coalesce(completed_at,start_at) desc limit $3`, [userId, clientId, Math.min(Math.max(limit,1),500)])
+  return rows
 }
 // Actualiza google_event_id y etag tras creación local + remota
 export async function pgAttachGoogleEvent(userId, id, google_event_id, google_etag){
@@ -393,5 +473,20 @@ export async function pgUpsertWhatsappSession(userId, { phone_number=null, statu
     values($1,$2,$3,$4)
     on conflict (user_id) do update set phone_number=excluded.phone_number,status=excluded.status,session_json=excluded.session_json,updated_at=now()
     returning *`, [userId,phone_number,status,session_json])
+  return rows[0]
+}
+
+// --------- USER SETTINGS ---------
+export async function pgGetUserSettings(userId){
+  const { rows } = await pool.query('select user_id, extra_checks, created_at, updated_at from user_settings where user_id=$1', [userId])
+  return rows[0]||null
+}
+export async function pgUpsertUserSettings(userId, { extra_checks={} }){
+  // Validar forma básica (evitar inyección arbitraria grande)
+  if(typeof extra_checks !== 'object' || Array.isArray(extra_checks)) extra_checks = {}
+  const { rows } = await pool.query(`insert into user_settings(user_id,extra_checks)
+    values($1,$2)
+    on conflict (user_id) do update set extra_checks=excluded.extra_checks, updated_at=now()
+    returning user_id, extra_checks, created_at, updated_at`, [userId, extra_checks])
   return rows[0]
 }
