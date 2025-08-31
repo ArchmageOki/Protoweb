@@ -17,6 +17,12 @@ export function setAccess(token, exp){
 
 export function getAccess(){ return accessToken }
 
+// Devuelve un access token fresco (refresca si es necesario)
+export async function ensureAccessToken(){
+  await refreshIfNeeded().catch(()=>{})
+  return accessToken
+}
+
 export async function ensureRefreshed(){
   await refreshIfNeeded().catch(()=>{})
   return !!accessToken

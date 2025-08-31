@@ -1,50 +1,163 @@
 import './style.css'
-import { authFetch } from './auth.js'
+import { ensureAccessToken } from './auth.js'
 
-const API_BASE = 'http://localhost:4001'
-const STATUS_URL = API_BASE + '/whatsapp/status'
-const RESET_URL = API_BASE + '/whatsapp/reset'
-const START_URL = API_BASE + '/whatsapp/session/start'
+// Elementos DOM
 const statusText = document.getElementById('statusText')
 const qrWrap = document.getElementById('qrWrap')
 const resetBtn = document.getElementById('resetBtn')
-let lastQrShown = null
-let timer = null
 
-async function fetchJSON(url, opts){
-  const r = await authFetch(url, opts)
-  if(!r.ok) throw new Error('HTTP '+r.status)
-  return r.json()
-}
+// Estado del polling
+let pollingInterval = null
 
-function setStatus(msg){ if(statusText) statusText.textContent = msg }
-
-function renderQr(dataUrl){
-  if(!qrWrap) return
-  if(!dataUrl){ qrWrap.innerHTML = '<span class="text-slate-400 text-xs">Esperando QR…</span>'; return }
-  if(lastQrShown === dataUrl) return
-  lastQrShown = dataUrl
-  qrWrap.innerHTML = `<img src="${dataUrl}" alt="QR" class="w-full h-full object-contain" />`
-}
-
-async function poll(){
-  try {
-    const { status, qr } = await fetchJSON(STATUS_URL)
-    switch(status){
-      case 'INITIALIZING': setStatus('Inicializando…'); renderQr(null); break
-      case 'QR': setStatus('Escanea el código con WhatsApp'); renderQr(qr); break
-      case 'CONNECTED': setStatus('Conectado. Redirigiendo…'); setTimeout(()=> window.location.replace('/mensajes.html'), 500); return
-      case 'DISCONNECTED': setStatus('Desconectado. Intentando reiniciar…'); break
-  case 'NO_SESSION': setStatus('Creando sesión…'); await fetchJSON(START_URL, { method:'POST' }); break
-      default: setStatus(status)
+// Función para hacer requests autenticados
+async function apiRequest(url, options = {}) {
+  const token = await ensureAccessToken()
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers
     }
-  } catch(e){ setStatus('Error consultando estado'); }
-  timer = setTimeout(poll, 2500)
+  })
+  
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status}`)
+  }
+  
+  return response.json()
 }
 
-resetBtn?.addEventListener('click', async ()=>{
-  try { setStatus('Reiniciando…'); await fetchJSON(RESET_URL, { method:'POST', headers:{'Content-Type':'application/json'} }); lastQrShown=null } catch(e){ setStatus('Error al reiniciar') }
-})
+// Actualizar el texto de estado
+function updateStatus(message) {
+  if (statusText) {
+    statusText.textContent = message
+    console.log('[WhatsApp Login]', message)
+  }
+}
 
-// Inicia primer polling (creará sesión si no existe)
-poll()
+// Mostrar el código QR
+function showQR(qrData) {
+  if (!qrWrap) return
+  
+  if (qrData) {
+    qrWrap.innerHTML = `<img src="${qrData}" alt="QR Code" class="w-full h-full object-contain rounded" />`
+  } else {
+    qrWrap.innerHTML = '<span class="text-slate-400 text-xs">Esperando QR...</span>'
+  }
+}
+
+// Verificar el estado de WhatsApp
+async function checkStatus() {
+  try {
+    const data = await apiRequest('/data/whatsapp/status')
+    const { status, qr } = data
+    
+    console.log('[WhatsApp] Status:', status)
+    
+    switch (status) {
+      case 'NO_SESSION':
+        updateStatus('Iniciando sesión de WhatsApp...')
+        showQR(null)
+        await apiRequest('/data/whatsapp/start', { method: 'POST' })
+        break
+        
+      case 'INITIALIZING':
+        updateStatus('Inicializando WhatsApp...')
+        showQR(null)
+        break
+        
+      case 'QR':
+        updateStatus('Escanea el código QR con tu WhatsApp')
+        showQR(qr)
+        break
+        
+      case 'AUTHENTICATED':
+        updateStatus('Autenticado. Ya puedes usar WhatsApp!')
+        showQR(null)
+        stopPolling()
+        setTimeout(() => {
+          window.location.href = '/mensajes.html'
+        }, 1500)
+        break
+        
+      case 'LOADING':
+        updateStatus('Cargando WhatsApp Web...')
+        showQR(null)
+        break
+        
+      case 'READY':
+        updateStatus('¡Conectado exitosamente! Redirigiendo...')
+        showQR(null)
+        stopPolling()
+        setTimeout(() => {
+          window.location.href = '/mensajes.html'
+        }, 1500)
+        break
+        
+      case 'DISCONNECTED':
+        updateStatus('Desconectado. Reiniciando...')
+        showQR(null)
+        await apiRequest('/data/whatsapp/start', { method: 'POST' })
+        break
+        
+      default:
+        updateStatus(`Estado: ${status}`)
+        showQR(null)
+    }
+    
+  } catch (error) {
+    console.error('[WhatsApp] Error:', error)
+    updateStatus('Error de conexión')
+    showQR(null)
+  }
+}
+
+// Iniciar el polling
+function startPolling() {
+  if (pollingInterval) return
+  
+  updateStatus('Conectando con WhatsApp...')
+  checkStatus() // Primera verificación inmediata
+  
+  pollingInterval = setInterval(checkStatus, 3000) // Verificar cada 3 segundos
+}
+
+// Detener el polling
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval)
+    pollingInterval = null
+  }
+}
+
+// Reiniciar sesión
+async function resetSession() {
+  try {
+    updateStatus('Reiniciando sesión...')
+    showQR(null)
+    
+    stopPolling()
+    
+    await apiRequest('/data/whatsapp/reset', { method: 'POST' })
+    
+    updateStatus('Sesión reiniciada. Reconectando...')
+    
+    setTimeout(startPolling, 2000)
+    
+  } catch (error) {
+    console.error('[WhatsApp] Reset error:', error)
+    updateStatus('Error al reiniciar sesión')
+  }
+}
+
+// Event listeners
+if (resetBtn) {
+  resetBtn.addEventListener('click', resetSession)
+}
+
+// Limpiar al salir
+window.addEventListener('beforeunload', stopPolling)
+
+// Iniciar
+startPolling()

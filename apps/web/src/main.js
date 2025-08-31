@@ -3,6 +3,7 @@ import { Calendar } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import esLocale from '@fullcalendar/core/locales/es'
 import { ensureHolidayYears, isHoliday, ymd, getSampleEvents } from './calendar-utils'
+import './whatsapp-guard.js' // Importar el guard de WhatsApp
 
 // Toggle sidebar móvil + colapso escritorio
 let sidebar = document.getElementById('sidebar')

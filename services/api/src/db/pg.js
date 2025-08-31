@@ -195,13 +195,41 @@ export async function initSchema(){
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- Historial de mensajes WhatsApp enviados (snapshot de datos del cliente en el momento del envío)
+    create table if not exists whatsapp_messages (
+      id text primary key,
+      user_id text not null references users(id) on delete cascade,
+      client_id text null references clients(id) on delete set null,
+      calendar_event_id text null references calendar_events(id) on delete set null,
+      phone text not null,
+      client_name text null,
+      instagram text null,
+      message_text text not null,
+      direction text not null default 'outgoing', -- futuro: 'incoming'
+      status text not null default 'sent',        -- futuro: 'queued','failed','delivered','read'
+      sent_at timestamptz not null default now(),
+      created_at timestamptz not null default now()
+    );
+    create index if not exists idx_wa_msgs_user_sent on whatsapp_messages(user_id, sent_at desc);
+    create index if not exists idx_wa_msgs_user_event on whatsapp_messages(user_id, calendar_event_id);
+  alter table whatsapp_messages add column if not exists message_id text null;
+  create index if not exists idx_wa_msgs_user_msgid on whatsapp_messages(user_id, message_id);
+  -- message_id: id retornado por whatsapp-web.js (para correlacionar con estados futuros)
     -- Ajustes de usuario (persistencia de configuraciones UI)
     create table if not exists user_settings (
       user_id text primary key references users(id) on delete cascade,
       extra_checks jsonb not null default '{}'::jsonb,
+      clientes jsonb not null default '{}'::jsonb,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- Migración tolerante: añadir columna clientes si falta
+    do $$
+    begin
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='clientes') then
+        alter table user_settings add column clientes jsonb not null default '{}'::jsonb;
+      end if;
+    exception when others then null; end $$;
   `)
 }
 
@@ -338,12 +366,21 @@ export async function pgCreateClient(id, userId, data){
   // Normalizar fechas vacías a null
   const bd = (birth_date && String(birth_date).trim()) ? birth_date : null
   const laa = (last_appointment_at && String(last_appointment_at).trim()) ? last_appointment_at : null
+  // Normalizar instagram: quitar '@' y forzar minúsculas
+  const normInstagram = (() => {
+    if(instagram == null) return null
+    let v = String(instagram).trim()
+    if(!v) return null
+    v = v.replace(/@+/g,'') // elimina cualquier '@'
+    v = v.toLowerCase()
+    return v || null
+  })()
   const { rows } = await pool.query(`insert into clients(
       id,user_id,notes,first_name,last_name,full_name,mobile,instagram,dni,address,postal_code,birth_date,visits_count,total_amount,last_appointment_at,is_vip,completed_event_ids
     ) values(
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
     ) returning *`, [
-      id,userId,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip, completed_event_ids
+      id,userId,notes,first_name,last_name,full_name,finalMobile,normInstagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip, completed_event_ids
     ])
   return rows[0]
 }
@@ -379,11 +416,19 @@ export async function pgUpdateClient(userId, id, data){
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || existing.full_name
   const bd = (birth_date && String(birth_date).trim()) ? birth_date : null
   const laa = (last_appointment_at && String(last_appointment_at).trim()) ? last_appointment_at : null
+  const normInstagram = (() => {
+    if(instagram == null) return null
+    let v = String(instagram).trim()
+    if(!v) return null
+    v = v.replace(/@+/g,'')
+    v = v.toLowerCase()
+    return v || null
+  })()
   const { rows } = await pool.query(`update clients set
       notes=$3,first_name=$4,last_name=$5,full_name=$6,mobile=$7,instagram=$8,dni=$9,address=$10,postal_code=$11,birth_date=$12,
       visits_count=$13,total_amount=$14,last_appointment_at=$15,is_vip=$16,completed_event_ids=$17,updated_at=now()
     where user_id=$1 and id=$2 returning *`, [
-      userId,id,notes,first_name,last_name,full_name,finalMobile,instagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip,completed_event_ids
+      userId,id,notes,first_name,last_name,full_name,finalMobile,normInstagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip,completed_event_ids
     ])
   return rows[0]||null
 }
@@ -482,17 +527,39 @@ export async function pgUpsertWhatsappSession(userId, { phone_number=null, statu
   return rows[0]
 }
 
+// --------- WHATSAPP MESSAGES ---------
+export async function pgInsertWhatsappMessage(id, userId, { client_id=null, calendar_event_id=null, phone, client_name=null, instagram=null, message_text, direction='outgoing', status='sent', sent_at=null, message_id=null }){
+  if(!phone) throw new Error('phone required')
+  if(!message_text) throw new Error('message_text required')
+  const { rows } = await pool.query(`insert into whatsapp_messages(
+    id,user_id,client_id,calendar_event_id,phone,client_name,instagram,message_text,direction,status,sent_at,message_id
+  ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,coalesce($11, now()),$12) returning *`, [
+    id,userId,client_id,calendar_event_id,phone,client_name,instagram,message_text,direction,status,sent_at,message_id
+  ])
+  return rows[0]
+}
+export async function pgListWhatsappMessages(userId, { limit=100, offset=0 }={}){
+  limit = Math.min(Math.max(limit,1),500)
+  offset = Math.max(offset,0)
+  const { rows } = await pool.query(`select * from (
+    select *, count(*) over() as __total from whatsapp_messages where user_id=$1
+  ) t order by sent_at desc limit $2 offset $3`, [userId, limit, offset])
+  const total = rows[0] ? Number(rows[0].__total) : 0
+  return { items: rows.map(r=>{ const { __total, ...rest } = r; return rest }), total }
+}
+
 // --------- USER SETTINGS ---------
 export async function pgGetUserSettings(userId){
-  const { rows } = await pool.query('select user_id, extra_checks, created_at, updated_at from user_settings where user_id=$1', [userId])
+  const { rows } = await pool.query('select user_id, extra_checks, clientes, created_at, updated_at from user_settings where user_id=$1', [userId])
   return rows[0]||null
 }
-export async function pgUpsertUserSettings(userId, { extra_checks={} }){
-  // Validar forma básica (evitar inyección arbitraria grande)
+export async function pgUpsertUserSettings(userId, { extra_checks={}, clientes={} }){
+  // Validaciones básicas
   if(typeof extra_checks !== 'object' || Array.isArray(extra_checks)) extra_checks = {}
-  const { rows } = await pool.query(`insert into user_settings(user_id,extra_checks)
-    values($1,$2)
-    on conflict (user_id) do update set extra_checks=excluded.extra_checks, updated_at=now()
-    returning user_id, extra_checks, created_at, updated_at`, [userId, extra_checks])
+  if(typeof clientes !== 'object' || Array.isArray(clientes)) clientes = {}
+  const { rows } = await pool.query(`insert into user_settings(user_id,extra_checks,clientes)
+    values($1,$2,$3)
+    on conflict (user_id) do update set extra_checks=excluded.extra_checks, clientes=excluded.clientes, updated_at=now()
+    returning user_id, extra_checks, clientes, created_at, updated_at`, [userId, extra_checks, clientes])
   return rows[0]
 }

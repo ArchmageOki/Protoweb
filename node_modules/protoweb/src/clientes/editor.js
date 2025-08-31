@@ -321,7 +321,8 @@ async function fetchClienteHistory(cliente){
         const d = new Date(raw)
         return isNaN(d.getTime()) ? null : d
       })(),
-      notas: ev.notes || ev.description || '',
+  // Notas: no usar título/description como fallback; si no hay notes reales -> ''
+  notas: ev.notes || '',
       priceTotal: ev.total_amount!=null? Number(ev.total_amount): null,
       pricePaid: ev.paid_amount!=null? Number(ev.paid_amount): null,
       adjuntos: []

@@ -50,6 +50,39 @@ export function initSidebar(){
       }
     } catch {}
   }
+  function animateSubmenu(panel, expand){
+    if(!panel) return
+    // Si ya está en el estado deseado saltar
+    const already = expand ? panel.classList.contains('is-expanded') && !panel.classList.contains('is-collapsed') : panel.classList.contains('is-collapsed')
+    if(already) return
+    panel.classList.add('submenu-animating')
+    // Asegurar visible para medir
+    panel.classList.remove('hidden')
+    const contentHeight = panel.scrollHeight
+    if(expand){
+      panel.classList.remove('is-collapsed')
+      panel.style.maxHeight = '0px'
+      // Forzar reflow
+      void panel.offsetHeight
+      panel.classList.add('is-expanded')
+      panel.style.maxHeight = contentHeight + 'px'
+    } else {
+      // Colapsar
+      panel.style.maxHeight = panel.scrollHeight + 'px'
+      void panel.offsetHeight
+      panel.classList.remove('is-expanded')
+      panel.classList.add('is-collapsed')
+      panel.style.maxHeight = '0px'
+    }
+    function cleanup(){
+      panel.classList.remove('submenu-animating')
+      panel.style.maxHeight = expand ? panel.scrollHeight + 'px' : ''
+      if(!expand){ panel.classList.add('hidden') }
+      panel.removeEventListener('transitionend', cleanup)
+      if(expand){ panel.style.maxHeight = '' } // permitir altura auto si cambia contenido
+    }
+    panel.addEventListener('transitionend', cleanup)
+  }
   triggers.forEach(btn => {
     btn.addEventListener('click', (e)=>{
       const key = btn.getAttribute('data-submenu-trigger')
@@ -58,12 +91,9 @@ export function initSidebar(){
       const expanded = btn.getAttribute('aria-expanded') === 'true'
       const willExpand = !expanded
       btn.setAttribute('aria-expanded', String(willExpand))
-      if(panel){ panel.classList.toggle('hidden', !willExpand) }
+      if(panel){ animateSubmenu(panel, willExpand) }
       if(caret){ caret.classList.toggle('rotate-180', willExpand) }
-      // Ajustar altura de la línea vertical del árbol ajustes cuando se expande
-      if(willExpand && key==='ajustes' && panel){
-        requestAnimationFrame(adjustAjustesTreeLine)
-      }
+      if(willExpand && key==='ajustes' && panel){ requestAnimationFrame(adjustAjustesTreeLine) }
     })
   })
 

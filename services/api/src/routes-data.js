@@ -5,6 +5,7 @@ import {
   pgCreateClient, pgListClients, pgGetClient, pgUpdateClient, pgDeleteClient,
   pgCreateEvent, pgListEvents, pgGetEvent, pgUpdateEvent, pgDeleteEvent, pgCompleteEvent,
   pgGetWhatsappSession, pgUpsertWhatsappSession,
+  pgInsertWhatsappMessage, pgListWhatsappMessages,
   pgGetUserSettings, pgUpsertUserSettings,
   pgListCompletedEventsForClient,
   pgRecalcClientCompletedStats
@@ -307,6 +308,86 @@ r.get('/whatsapp/session', async (req,res)=>{
   res.json({ ok:true, session: sess || null })
 })
 
+// Proxies al microservicio de whatsapp (si está corriendo en localhost:4001)
+import fetch from 'node-fetch'
+// Auto-spawn opcional del microservicio de WhatsApp si no está levantado.
+import { spawn } from 'child_process'
+import path from 'path'
+import { fileURLToPath } from 'url'
+const WHATSAPP_SERVICE_BASE = process.env.WHATSAPP_SERVICE_BASE || 'http://localhost:4001'
+let waProcess = null
+let waProcessStarting = false
+function ensureWhatsappServiceSpawn(){
+  // Activar siempre en no-producción salvo desactivación explícita
+  if(process.env.WHATSAPP_AUTO_SPAWN === 'false') return
+  if(process.env.NODE_ENV === 'production' && process.env.WHATSAPP_AUTO_SPAWN !== 'true') return
+  if(waProcess || waProcessStarting) return
+  waProcessStarting = true
+  try {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    // Ir a raíz del repo: ../../.. desde services/api/src -> services
+    const repoRoot = path.resolve(__dirname, '../../..')
+    const waDir = path.join(repoRoot, 'services', 'whatsapp')
+    waProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run','dev'], { cwd: waDir, stdio:'inherit', env: process.env })
+    waProcess.on('exit', (code,signal)=>{ waProcess=null; console.log('[whatsapp][autospawn] proceso terminado', code, signal) })
+    console.log('[whatsapp][autospawn] lanzado en', waDir)
+  } catch(e){ console.error('[whatsapp][autospawn] fallo al lanzar', e.message) }
+  finally { waProcessStarting = false }
+}
+// ---- WHATSAPP PROXIES ----
+r.get('/whatsapp/status', async (req,res)=>{
+  try {
+    const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/status', { 
+      headers:{ 'Authorization':'Bearer '+req.accessToken } 
+    })
+    const j = await r2.json().catch(()=>({}))
+    res.status(r2.status).json(j)
+  } catch(e){ 
+    res.status(200).json({ status:'UNAVAILABLE', error:'service_down' }) 
+  }
+})
+
+r.post('/whatsapp/start', async (req,res)=>{
+  try {
+    const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/start', { 
+      method:'POST', 
+      headers:{ 'Authorization':'Bearer '+req.accessToken } 
+    })
+    const j = await r2.json().catch(()=>({}))
+    res.status(r2.status).json(j)
+  } catch(e){
+    res.status(502).json({ error:'whatsapp_service_unreachable' })
+  }
+})
+
+r.post('/whatsapp/reset', async (req,res)=>{
+  try {
+    const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/reset', { 
+      method:'POST', 
+      headers:{ 'Authorization':'Bearer '+req.accessToken } 
+    })
+    const j = await r2.json().catch(()=>({}))
+    res.status(r2.status).json(j)
+  } catch(e){ 
+    res.status(502).json({ error:'whatsapp_service_unreachable' }) 
+  }
+})
+
+r.post('/whatsapp/send', async (req,res)=>{
+  try {
+    const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/send', { 
+      method:'POST', 
+      headers:{ 'Authorization':'Bearer '+req.accessToken, 'Content-Type':'application/json' }, 
+      body: JSON.stringify(req.body||{}) 
+    })
+    const j = await r2.json().catch(()=>({}))
+    res.status(r2.status).json(j)
+  } catch(e){ 
+    res.status(502).json({ error:'whatsapp_service_unreachable' }) 
+  }
+})
+
 r.put('/whatsapp/session', async (req,res)=>{
   const { phone_number=null, status='inactive', session_json=null } = req.body||{}
   if(status && !['inactive','connecting','ready','error'].includes(status)) return res.status(400).json({ error:'invalid_status' })
@@ -314,18 +395,62 @@ r.put('/whatsapp/session', async (req,res)=>{
   res.json({ ok:true, session: saved })
 })
 
+// ---- WHATSAPP MESSAGES ----
+// Listado paginado del historial (por ahora sólo mensajes salientes registrados)
+r.get('/whatsapp/messages', async (req,res)=>{
+  let { limit='50', page='1' } = req.query
+  const allowedSizes = [10,25,50,100,200]
+  let size = parseInt(limit,10); if(isNaN(size) || !allowedSizes.includes(size)) size = 50
+  let p = parseInt(page,10); if(isNaN(p) || p<1) p=1
+  const offset = (p-1)*size
+  try {
+    const { items, total } = await pgListWhatsappMessages(req.user.id, { limit:size, offset })
+    const hasMore = (p*size) < total
+    res.json({ ok:true, items, page:p, limit:size, has_more: hasMore, total })
+  } catch(e){
+    console.error('[whatsapp][messages][list] error', e.message)
+    res.status(500).json({ error:'list_failed' })
+  }
+})
+
+// Historial de mensajes para la interfaz (alias a /whatsapp/messages)
+r.get('/whatsapp/history', async (req,res)=>{
+  try {
+    const { items } = await pgListWhatsappMessages(req.user.id, { limit: 100, offset: 0 })
+    res.json({ ok: true, messages: items })
+  } catch(e){
+    console.error('[whatsapp][history] error', e.message)
+    res.status(500).json({ error:'list_failed' })
+  }
+})
+
+// Endpoint provisional para registrar un mensaje enviado (se usará al implementar envío real)
+r.post('/whatsapp/messages', async (req,res)=>{
+  const { client_id=null, calendar_event_id=null, phone, client_name=null, instagram=null, message_text, message_id=null, status='sent', direction='outgoing', sent_at=null } = req.body||{}
+  if(!phone || typeof phone !== 'string') return res.status(400).json({ error:'invalid_phone' })
+  if(!message_text || typeof message_text !== 'string') return res.status(400).json({ error:'invalid_message' })
+  const trimmed = message_text.slice(0,5000)
+  try {
+    const row = await pgInsertWhatsappMessage(nanoid(), req.user.id, { client_id, calendar_event_id, phone: phone.replace(/[^0-9+]/g,''), client_name, instagram, message_text: trimmed, message_id, status, direction, sent_at })
+    res.status(201).json({ ok:true, item: row })
+  } catch(e){
+    console.error('[whatsapp][messages][create] error', e.message)
+    res.status(500).json({ error:'create_failed' })
+  }
+})
+
 // ---- USER SETTINGS ----
 r.get('/settings', async (req,res)=>{
   const row = await pgGetUserSettings(req.user.id)
-  if(!row) return res.json({ ok:true, settings: { extra_checks:{} } })
-  res.json({ ok:true, settings: { extra_checks: row.extra_checks || {} } })
+  if(!row) return res.json({ ok:true, settings: { extra_checks:{}, clientes:{} } })
+  res.json({ ok:true, settings: { extra_checks: row.extra_checks || {}, clientes: row.clientes || {} } })
 })
 r.put('/settings', async (req,res)=>{
   const body = req.body||{}
-  const { extra_checks={} } = body
+  const { extra_checks={}, clientes={} } = body
   try {
-    const saved = await pgUpsertUserSettings(req.user.id, { extra_checks })
-    res.json({ ok:true, settings: { extra_checks: saved.extra_checks } })
+    const saved = await pgUpsertUserSettings(req.user.id, { extra_checks, clientes })
+    res.json({ ok:true, settings: { extra_checks: saved.extra_checks, clientes: saved.clientes } })
   } catch(e){
     console.error('[settings][put] error', e.message)
     res.status(400).json({ error:'save_failed' })

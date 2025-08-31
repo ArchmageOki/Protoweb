@@ -33,38 +33,78 @@
             </div>
           </div>
         </header>
-        <main class="flex-1 p-6">
-          <!-- Contenido futuro del módulo de campañas / recordatorios -->
-          <div class="rounded-lg border border-dashed border-slate-300 bg-white/50 p-8 text-center text-sm text-slate-500">
-            Solo estructura: barra lateral + cabecera. Aquí irá el constructor de campañas / recordatorios.
-          </div>
+        <main class="flex-1 p-6 space-y-8">
+          <!-- Barra superior de estado de la sesión de WhatsApp -->
+          <section class="flex items-center gap-4 flex-wrap">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-slate-600">Estado WhatsApp:</span>
+              <span id="waStatusBadge" class="text-xs px-2 py-1 rounded bg-slate-200 text-slate-600">Cargando…</span>
+            </div>
+            <div class="flex items-center gap-2 ml-auto">
+              <button id="resetSessionBtn" class="text-xs px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 transition">Cerrar sesión</button>
+            </div>
+          </section>
+
+          <!-- Contenedor para futuras herramientas de envío / campañas -->
+          <section class="rounded-lg border border-slate-200 bg-white p-5" id="waSendPanel">
+            <h2 class="text-sm font-semibold text-slate-700 mb-4">Enviar mensaje</h2>
+            <form id="waSendForm" class="space-y-4" autocomplete="off">
+              <div>
+                <label class="block text-[11px] font-medium text-slate-600 mb-1">Cliente</label>
+                <div class="relative" id="waClientPicker">
+                  <input type="text" id="waSendClientSearch" class="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-sky-400" placeholder="Buscar por nombre, móvil o instagram" autocomplete="off" />
+                  <button type="button" id="waSendClientClear" class="hidden absolute inset-y-0 right-2 text-slate-500 hover:text-slate-700 text-xs" title="Limpiar selección">✕</button>
+                  <div id="waSendClientResults" class="hidden absolute z-20 mt-1 w-full max-h-60 overflow-auto rounded border border-slate-200 bg-white shadow text-xs"></div>
+                  <input type="hidden" id="waSendClientId" />
+                </div>
+                <div id="waSendSelectedClient" class="mt-2 text-xs text-slate-500 hidden"></div>
+              </div>
+              <div>
+                <label for="waSendMessageText" class="block text-[11px] font-medium text-slate-600 mb-1">Mensaje</label>
+                <textarea id="waSendMessageText" rows="4" class="w-full border rounded px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-sky-400" placeholder="Escribe el mensaje a enviar" maxlength="1000"></textarea>
+                <div class="mt-1 flex justify-between text-[10px] text-slate-400"><span id="waSendMsgHint">Máx 1000 caracteres</span><span id="waSendCharCount">0</span></div>
+              </div>
+              <div class="flex items-center gap-3">
+                <button type="submit" id="waSendBtn" class="px-4 py-2 rounded bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed">Enviar</button>
+                <div id="waSendStatus" class="text-xs text-slate-500"></div>
+              </div>
+            </form>
+          </section>
+
+          <!-- Historial de mensajes enviados -->
+          <section class="rounded-lg border border-slate-200 bg-white p-5" id="messageHistory">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-sm font-semibold text-slate-700">Historial de mensajes enviados</h2>
+              <div class="flex items-center gap-2 text-xs text-slate-500">
+                <span id="messageHistoryCount">0 registros</span>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-xs">
+                <thead>
+                  <tr class="text-left text-slate-600 border-b border-slate-200">
+                    <th class="py-2 pr-4 font-medium">Teléfono</th>
+                    <th class="py-2 pr-4 font-medium">Nombre</th>
+                    <th class="py-2 pr-4 font-medium">Instagram</th>
+                    <th class="py-2 pr-4 font-medium">Cita relacionada</th>
+                    <th class="py-2 pr-4 font-medium">Hora envío</th>
+                    <th class="py-2 pr-4 font-medium">Mensaje</th>
+                  </tr>
+                </thead>
+                <tbody id="messageHistoryTbody" class="divide-y divide-slate-100">
+                  <tr class="empty-row"><td colspan="6" class="py-6 text-center text-slate-400">Sin mensajes todavía</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </main>
       </div>
     </div>
   <script type="module" src="/src/auth-guard.js"></script>
+  <script type="module" src="/src/whatsapp-guard.js"></script>
   <script type="module" src="/src/layout/inject-sidebar.js"></script>
   <script type="module" src="/src/main.js"></script>
   <script type="module" src="/src/user-menu.js"></script>
-    <script type="module">
-      const STATUS_URL = '/whatsapp/status';
-      async function check(){
-        try {
-          const r = await fetch(STATUS_URL);
-          if(!r.ok) throw new Error();
-          const { status } = await r.json();
-          if(status !== 'CONNECTED') {
-            // Redirigir si no conectado
-            window.location.replace('/whatsapp-login.html');
-          }
-        } catch {
-          // Si error de red, asumir desconectado y redirigir
-          window.location.replace('/whatsapp-login.html');
-        }
-      }
-      // Comprobación inicial rápida
-      check();
-      // Polling cada 5s
-      setInterval(check, 5000);
-    </script>
+  <script type="module" src="/src/whatsapp-messages.js"></script>
   </body>
 </html>

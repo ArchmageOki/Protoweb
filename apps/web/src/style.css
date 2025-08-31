@@ -243,6 +243,11 @@ input[type=date].has-custom-icon::-webkit-inner-spin-button{ display:none; }
 /* ================== Sidebar colapsable ================== */
 /* Estado base (ancho 16rem = w-64 ya definido en HTML) */
 #sidebar { transition: width 0.25s ease, padding 0.25s ease; }
+/* Animación submenús (Ajustes) */
+[data-submenu] { overflow:hidden; }
+[data-submenu].submenu-animating { transition: max-height 0.28s ease, opacity 0.24s ease; }
+[data-submenu].is-collapsed { max-height:0 !important; opacity:0; }
+[data-submenu].is-expanded { opacity:1; }
 /* Asegurar que el contenedor principal puede encoger y no fuerza overflow */
 #app { min-width:0; }
 .main-wrapper { flex:1 1 auto; min-width:0; width:100%; max-width:100%; overflow-x:hidden; box-sizing:border-box; }

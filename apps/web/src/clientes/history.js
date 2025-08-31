@@ -51,7 +51,8 @@ export function renderClienteHistory(cliente){
       const adjBadge = count ? `<button type="button" data-cita-adj-btn data-cita-index="${idx}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-medium hover:bg-slate-300 transition" title="Ver ${count} adjunto${count!==1?'s':''}">📎 ${count}</button>` : '—'
       const importe = (ci.priceTotal!=null ? ci.priceTotal.toFixed(2)+' €' : '—') + (ci.pricePaid!=null && ci.pricePaid !== ci.priceTotal ? ` <span class="text-[10px] text-slate-500" title="Pagado">(${ci.pricePaid.toFixed(2)} €)</span>` : '')
   // Nuevo orden: Fecha | Importe | Notas | Adjuntos
-  tr.innerHTML = `<td class="px-2 py-1 whitespace-nowrap w-0" style="width:1%">${fecha}</td><td class="px-2 py-1 whitespace-nowrap w-0" style="width:1%" title="Total${ci.pricePaid!=null?` / Pagado`:''}">${importe}</td><td class="px-2 py-1">${ci.notas || '—'}</td><td class="px-2 py-1 text-slate-600">${adjBadge}</td>`
+  const notasHtml = (ci.notas && ci.notas.trim()) ? ci.notas.trim() : '<span class="italic text-slate-500">Sin notas</span>'
+  tr.innerHTML = `<td class="px-2 py-1 whitespace-nowrap w-0" style="width:1%">${fecha}</td><td class="px-2 py-1 whitespace-nowrap w-0" style="width:1%" title="Total${ci.pricePaid!=null?` / Pagado`:''}">${importe}</td><td class="px-2 py-1">${notasHtml}</td><td class="px-2 py-1 text-slate-600">${adjBadge}</td>`
       tbody.appendChild(tr)
     })
   }

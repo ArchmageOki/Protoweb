@@ -41,65 +41,83 @@
     <script type="module" src="/src/main.js"></script>
     <script type="module" src="/src/user-menu.js"></script>
     <script>
-      (function(){
-        const KEY = 'app.settings'
-        const root = document.getElementById('cliente-column-selector')
-        if(!root) return
-        const AVAILABLE = [
-          { key:'nombre', label:'Nombre', locked:true },
-          { key:'apellidos', label:'Apellidos' },
-          { key:'movil', label:'Móvil', locked:true },
-          { key:'instagram', label:'Instagram' },
-          { key:'dni', label:'DNI' },
-            { key:'direccion', label:'Dirección' },
-          { key:'codigoPostal', label:'Código postal' },
-          { key:'nacimiento', label:'Nacimiento' },
-          { key:'visitas', label:'Citas totales' },
-          { key:'dineroTotal', label:'Dinero total' },
-          { key:'ultimaCita', label:'Última cita' },
-          { key:'notas', label:'Notas' }
-        ]
-        let savedVisible = null
-        try { const saved = JSON.parse(localStorage.getItem(KEY) || '{}'); savedVisible = saved.clientes?.visibleColumns || null } catch {}
-        if(!Array.isArray(savedVisible) || !savedVisible.length){ savedVisible = AVAILABLE.map(c=>c.key) }
-        const LOCKED = AVAILABLE.filter(c=>c.locked).map(c=>c.key)
-        const normSet = new Set(savedVisible)
-        let changed = false
-        LOCKED.forEach(k=>{ if(!normSet.has(k)){ normSet.add(k); changed=true } })
-        if(changed){
-          savedVisible = Array.from(normSet)
-          try { const prev = JSON.parse(localStorage.getItem(KEY) || '{}'); const next = { ...prev, clientes:{ ...(prev.clientes||{}), visibleColumns: savedVisible } }; localStorage.setItem(KEY, JSON.stringify(next)) } catch {}
+    (function(){
+      const KEY = 'app.settings'
+      const root = document.getElementById('cliente-column-selector')
+      if(!root) return
+      const AVAILABLE = [
+        { key:'nombre', label:'Nombre', locked:true },
+        { key:'apellidos', label:'Apellidos' },
+        { key:'movil', label:'Móvil', locked:true },
+        { key:'instagram', label:'Instagram' },
+        { key:'dni', label:'DNI' },
+        { key:'direccion', label:'Dirección' },
+        { key:'codigoPostal', label:'Código postal' },
+        { key:'nacimiento', label:'Nacimiento' },
+        { key:'visitas', label:'Citas totales' },
+        { key:'dineroTotal', label:'Dinero total' },
+        { key:'ultimaCita', label:'Última cita' },
+        { key:'notas', label:'Notas' }
+      ]
+      const LOCKED = AVAILABLE.filter(c=>c.locked).map(c=>c.key)
+      let current = AVAILABLE.map(c=>c.key)
+      function persistLocal(cols){
+        try { const prev = JSON.parse(localStorage.getItem(KEY)||'{}'); const next = { ...prev, clientes:{ ...(prev.clientes||{}), visibleColumns: cols } }; localStorage.setItem(KEY, JSON.stringify(next)) } catch {}
+      }
+      async function loadRemote(){
+        try {
+          const r = await fetch('/api/data/settings', { credentials:'include' })
+          if(!r.ok) throw new Error('settings_fetch_failed')
+          const j = await r.json()
+          const remoteCols = j?.settings?.clientes?.visibleColumns
+          if(Array.isArray(remoteCols) && remoteCols.length){ current = remoteCols }
+        } catch(e){
+          try { const saved = JSON.parse(localStorage.getItem(KEY)||'{}'); const cols = saved.clientes?.visibleColumns; if(Array.isArray(cols)&&cols.length) current=cols } catch{}
         }
-        root.innerHTML = ''
-        AVAILABLE.forEach(col => {
-          const id = 'col-vis-' + col.key
-          const isChecked = savedVisible.includes(col.key)
-          const div = document.createElement('label')
-          const locked = !!col.locked
-          div.className = 'flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs cursor-pointer hover:bg-slate-50' + (locked ? ' opacity-80' : '')
-          div.innerHTML = `<input type="checkbox" id="${id}" data-col-key="${col.key}" class="rounded border-slate-300" ${isChecked?'checked':''} ${locked?'disabled':''}/> <span>${col.label}${locked?' *':''}</span>`
+        // Asegurar locked siempre
+        const set = new Set(current); let changed=false
+        LOCKED.forEach(k=>{ if(!set.has(k)){ set.add(k); changed=true } })
+        if(changed){ current = Array.from(set) }
+        render()
+      }
+      function render(){
+        root.innerHTML=''
+        AVAILABLE.forEach(col=>{
+          const id='col-vis-'+col.key
+          const div=document.createElement('label')
+          const isChecked=current.includes(col.key)
+          const locked=!!col.locked
+          div.className='flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs cursor-pointer hover:bg-slate-50'+(locked?' opacity-80':'')
+          div.innerHTML=`<input type="checkbox" id="${id}" data-col-key="${col.key}" class="rounded border-slate-300" ${isChecked?'checked':''} ${locked?'disabled':''}/> <span>${col.label}${locked?' *':''}</span>`
           root.appendChild(div)
         })
-        const saveBtn = document.getElementById('cliente-cols-guardar')
-        const resetBtn = document.getElementById('cliente-cols-restablecer')
-        function save(columns){
-          try { const prev = JSON.parse(localStorage.getItem(KEY) || '{}'); const next = { ...prev, clientes:{ ...(prev.clientes||{}), visibleColumns: columns } }; localStorage.setItem(KEY, JSON.stringify(next)) } catch {}
-        }
-        saveBtn?.addEventListener('click', () => {
-          let cols = Array.from(root.querySelectorAll('input[data-col-key]:checked')).map(i=>i.getAttribute('data-col-key'))
-          AVAILABLE.filter(c=>c.locked).forEach(c=>{ if(!cols.includes(c.key)) cols.push(c.key) })
-          save(cols)
-          saveBtn.disabled = true
-          const original = saveBtn.textContent
-          saveBtn.textContent = 'Guardado'
-          setTimeout(()=>{ saveBtn.textContent = original; saveBtn.disabled=false }, 1200)
-        })
-        resetBtn?.addEventListener('click', () => {
-          root.querySelectorAll('input[data-col-key]').forEach(i=> { if(!i.disabled) i.checked=true })
-          const all = AVAILABLE.map(c=>c.key)
-          save(all)
-        })
-      })()
+      }
+      async function saveRemote(cols){
+        // Persistir backend + local
+        persistLocal(cols)
+        try {
+          await fetch('/api/data/settings', {
+            method:'PUT', headers:{ 'Content-Type':'application/json' }, credentials:'include',
+            body: JSON.stringify({ clientes:{ visibleColumns: cols } })
+          })
+        } catch{}
+      }
+      const saveBtn=document.getElementById('cliente-cols-guardar')
+      const resetBtn=document.getElementById('cliente-cols-restablecer')
+      saveBtn?.addEventListener('click', ()=>{
+        let cols=Array.from(root.querySelectorAll('input[data-col-key]:checked')).map(i=>i.getAttribute('data-col-key'))
+        LOCKED.forEach(k=>{ if(!cols.includes(k)) cols.push(k) })
+        current=cols
+        saveBtn.disabled=true; const orig=saveBtn.textContent; saveBtn.textContent='Guardando…'
+        saveRemote(cols).finally(()=>{ saveBtn.textContent='Guardado'; setTimeout(()=>{ saveBtn.textContent=orig; saveBtn.disabled=false }, 1200) })
+      })
+      resetBtn?.addEventListener('click', ()=>{
+        current = AVAILABLE.map(c=>c.key)
+        render()
+        saveRemote(current)
+      })
+      loadRemote()
+    })()
     </script>
   </body>
 </html>

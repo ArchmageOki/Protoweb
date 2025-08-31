@@ -60,7 +60,7 @@ function getVisibleColumns(){
     if(Array.isArray(cols) && cols.length){
       const set = new Set(cols)
       // Forzar siempre visibles
-      set.add('nombre'); set.add('movil')
+  set.add('nombre'); set.add('movil'); set.add('vip') // vip siempre visible (columna estrella)
       return set
     }
   } catch {}
@@ -79,7 +79,7 @@ export function renderClientes(list){
   pageItems.forEach(c => {
     const tr = document.createElement('tr')
     tr.innerHTML = `
-      <td class="px-2 py-2 text-center align-middle w-6">${c.vip ? '<span class="text-amber-500" title="VIP">⭐</span>' : ''}</td>
+      <td class="px-1 py-2 text-center align-middle" style="width:1.75rem">${c.vip ? '<span class="text-amber-500" title="VIP">⭐</span>' : ''}</td>
       <td data-col="nombre" class="px-3 py-2"><span class="cell-text" title="${c.nombre}">${c.nombre}</span></td>
       <td data-col="apellidos" class="px-3 py-2"><span class="cell-text" title="${c.apellidos}">${c.apellidos}</span></td>
       <td data-col="movil" class="px-3 py-2"><a class="cell-text cliente-phone-link hover:underline" title="Abrir WhatsApp" href="https://wa.me/34${c.movil}" target="_blank" rel="noopener">${c.movil}</a></td>

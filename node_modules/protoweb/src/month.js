@@ -146,35 +146,30 @@ if (calEl) {
       textSpan.style.whiteSpace = 'nowrap'
       textSpan.style.overflow = 'hidden'
       textSpan.style.textOverflow = 'ellipsis'
-      // Indicador de evento completado antes de iconos extra
-      try {
-        if(arg.event.extendedProps && arg.event.extendedProps.is_completed){
-          const done = document.createElement('span')
-          done.className='completed-check'
-          done.textContent='✔'
-          wrapper.appendChild(done)
-        }
-      } catch{}
-      // Extra check icon único al inicio
+      // (Eliminado indicador visual de completado para liberar espacio)
+      // Extra check icon único al inicio (solo si NO está completado)
       let iconInserted = false
       try {
         const settings = JSON.parse(localStorage.getItem('app.settings')||'{}')
         const ec = settings.extraChecks||{}
-        for(const k of ['1','2','3']){
-          const prop = 'extra_check_'+k
-          if(arg.event.extendedProps && arg.event.extendedProps[prop]){
-            const cfg = ec[k]
-            if(cfg && cfg.visible && cfg.style==='icon'){
-              const iconBox = document.createElement('span')
-              iconBox.className='extra-check-icon'
-              iconBox.textContent = cfg.icon || '✔'
-              wrapper.appendChild(iconBox)
-              iconInserted = true
-              break
+        const isCompleted = !!(arg.event.extendedProps && arg.event.extendedProps.is_completed)
+        if(!isCompleted){
+          for(const k of ['1','2','3']){
+            const prop = 'extra_check_'+k
+            if(arg.event.extendedProps && arg.event.extendedProps[prop]){
+              const cfg = ec[k]
+              if(cfg && cfg.visible && cfg.style==='icon'){
+                const iconBox = document.createElement('span')
+                iconBox.className='extra-check-icon'
+                iconBox.textContent = cfg.icon || '✔'
+                wrapper.appendChild(iconBox)
+                iconInserted = true
+                break
+              }
             }
           }
         }
-      } catch{}
+      } catch(e){ /* silencio */ }
       wrapper.appendChild(textSpan)
       return { domNodes: [wrapper] }
     },
