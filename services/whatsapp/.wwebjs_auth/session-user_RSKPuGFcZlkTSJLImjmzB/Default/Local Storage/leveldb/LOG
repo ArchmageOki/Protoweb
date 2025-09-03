@@ -1,0 +1,8 @@
+2025/09/01-00:27:55.916 d4f8 Reusing MANIFEST D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-user_RSKPuGFcZlkTSJLImjmzB\Default\Local Storage\leveldb/MANIFEST-000001
+2025/09/01-00:27:55.916 d4f8 Recovering log #3
+2025/09/01-00:27:55.917 d4f8 Level-0 table #3: started
+2025/09/01-00:27:55.919 d4f8 Level-0 table #3: 22230 bytes OK
+2025/09/01-00:27:55.919 d4f8 Recovering log #4
+2025/09/01-00:27:55.919 d4f8 Reusing old log D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\session-user_RSKPuGFcZlkTSJLImjmzB\Default\Local Storage\leveldb/000004.log 
+2025/09/01-00:27:55.920 d4f8 Delete type=0 #3
+2025/09/01-00:27:55.920 d4f8 Delete type=2 #5
