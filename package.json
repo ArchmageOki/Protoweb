@@ -1,7 +1,11 @@
 {
   "name": "protoweb-monorepo",
   "private": true,
-  "workspaces": ["apps/*", "services/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently -k -n WEB,WA,API -c cyan,green,magenta \"npm:dev:web\" \"npm:dev:whatsapp\" \"npm:dev:api\"",
     "dev:web": "npm --workspace apps/web run dev -- --host 0.0.0.0",
@@ -14,5 +18,10 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "whatsapp-web.js": "^1.33.2",
+    "wwebjs-postgres": "^1.0.0"
   }
 }

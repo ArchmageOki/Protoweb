@@ -414,6 +414,28 @@ r.get('/whatsapp/status', async (req,res)=>{
       headers:{ 'Authorization':'Bearer '+req.accessToken } 
     })
     const j = await r2.json().catch(()=>({}))
+    // Completar con phone_number almacenado si falta
+    try {
+      if(!j.phone_number && !j.phoneNumber){
+        const sess = await pgGetWhatsappSession(req.user.id)
+        if(sess?.phone_number) j.phone_number = sess.phone_number
+        else if(sess?.session_json){
+          // Heurística para extraer número del session_json almacenado
+          try {
+            const sj = sess.session_json
+            let raw = sj?.me?.id || sj?.me?.wid || sj?.wid || sj?.user?.id || null
+            if(raw && typeof raw === 'string'){
+              const at = raw.indexOf('@'); if(at>0) raw = raw.slice(0, at)
+              let digits = raw.replace(/[^0-9]/g,'')
+              if(digits.length >= 9){
+                if(!digits.startsWith('34') && digits.length===9) digits = '34'+digits
+                j.phone_number = '+'+digits
+              }
+            }
+          } catch(_e) { /* silencioso */ }
+        }
+      }
+    } catch(_e){}
     res.status(r2.status).json(j)
   } catch(e){ 
     res.status(200).json({ status:'UNAVAILABLE', error:'service_down' }) 
@@ -464,8 +486,25 @@ r.post('/whatsapp/send', async (req,res)=>{
 })
 
 r.put('/whatsapp/session', async (req,res)=>{
-  const { phone_number=null, status='inactive', session_json=null } = req.body||{}
+  let { phone_number=null, status='inactive', session_json=null } = req.body||{}
+  // Normalizar status a minúsculas
+  if(typeof status === 'string') status = status.toLowerCase()
   if(status && !['inactive','connecting','ready','error'].includes(status)) return res.status(400).json({ error:'invalid_status' })
+  // Intentar derivar phone_number si no viene explícito
+  if(!phone_number && session_json){
+    try {
+      const sj = session_json
+      let raw = sj?.me?.id || sj?.me?.wid || sj?.wid || sj?.user?.id || null
+      if(raw && typeof raw === 'string'){
+        const at = raw.indexOf('@'); if(at>0) raw = raw.slice(0, at)
+        let digits = raw.replace(/[^0-9]/g,'')
+        if(digits.length >= 9){
+          if(!digits.startsWith('34') && digits.length===9) digits = '34'+digits
+          phone_number = '+'+digits
+        }
+      }
+    } catch(_e){ /* ignorar */ }
+  }
   const saved = await pgUpsertWhatsappSession(req.user.id, { phone_number, status, session_json })
   res.json({ ok:true, session: saved })
 })

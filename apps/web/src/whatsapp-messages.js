@@ -40,6 +40,7 @@ const outboxRefresh = document.getElementById('outboxRefresh')
 let scheduleOffsetMinutes = 0
 let scheduledDateTime = null
 const waScheduleDateTime = document.getElementById('waScheduleDateTime')
+const waSchedulePickerBtn = document.getElementById('waSchedulePickerBtn')
 if (waScheduleDateTime) {
   // Configurar fecha mínima (ahora)
   const now = new Date()
@@ -60,6 +61,16 @@ if (waScheduleDateTime) {
     }
   })
 }
+// Botón para abrir el selector nativo
+waSchedulePickerBtn?.addEventListener('click', (e)=>{
+  e.preventDefault()
+  // En algunos navegadores showPicker abre el diálogo; fallback: focus
+  if(typeof waScheduleDateTime.showPicker === 'function'){
+    try { waScheduleDateTime.showPicker() } catch { waScheduleDateTime.focus() }
+  } else {
+    waScheduleDateTime.focus()
+  }
+})
 
 // Historial de mensajes
 const messageHistoryCount = document.getElementById('messageHistoryCount')
@@ -81,11 +92,38 @@ async function updateWhatsAppStatus() {
     
     const data = await response.json()
     currentWaStatus = data.status
+    // Intentar obtener número de la respuesta del microservicio o de la sesión persistida
+    let phoneNumber = data.phone_number || data.phoneNumber || data.number || null
+    if(!phoneNumber && (currentWaStatus === 'READY' || currentWaStatus === 'AUTHENTICATED')){
+      try {
+        const sessResp = await authFetch(apiBase + '/data/whatsapp/session')
+        if(sessResp.ok){
+          const sess = await sessResp.json()
+            phoneNumber = sess.session?.phone_number || phoneNumber
+            if(!phoneNumber){
+              // Intentar derivar del session_json (heurísticas típicas de wwebjs)
+              try {
+                const sj = sess.session?.session_json
+                let raw = sj?.me?.id || sj?.me?.wid || sj?.wid || sj?.user?.id || null
+                if(raw && typeof raw === 'string'){
+                  const at = raw.indexOf('@'); if(at>0) raw = raw.slice(0, at)
+                  let digits = raw.replace(/[^0-9]/g,'')
+                  if(digits.length >= 9){ // Formateo básico
+                    if(!digits.startsWith('34') && digits.length===9){ digits = '34'+digits }
+                    phoneNumber = '+'+digits
+                  }
+                }
+              } catch(_e){}
+            }
+        }
+      } catch(_e){}
+    }
     
     // Actualizar badge visual
     updateStatusBadge(data.status, { 
       isFullyReady: data.isFullyReady,
-      internalState: data.internalState 
+      internalState: data.internalState,
+      phone: phoneNumber
     })
     
     // Habilitar/deshabilitar formulario según el estado
@@ -105,7 +143,18 @@ function updateStatusBadge(status, extraInfo = {}) {
   
   switch (status) {
     case 'READY':
-      text = extraInfo.isFullyReady ? 'Conectado ✓' : 'Conectado (Limitado)'
+      if(extraInfo.phone){
+        // Formatear número: quitar prefijo internacional +34 y corchetes
+        let digits = String(extraInfo.phone).replace(/[^0-9]/g,'')
+        // Quitar 0034 o 34 inicial si la longitud resultante sería 9
+        if(digits.startsWith('0034') && digits.length > 11) digits = digits.slice(4)
+        if(digits.startsWith('34') && digits.length > 9) digits = digits.slice(2)
+        text = `Conectado con el número ${digits} ✓`
+      } else if(extraInfo.isFullyReady){
+        text = 'Conectado ✓'
+      } else {
+        text = 'Conectado (Limitado)'
+      }
       className = extraInfo.isFullyReady 
         ? 'text-xs px-2 py-1 rounded bg-green-200 text-green-600'
         : 'text-xs px-2 py-1 rounded bg-yellow-200 text-yellow-600'
@@ -320,9 +369,9 @@ async function sendWhatsAppMessage() {
     
     // Confirmación visual exitosa
     if (scheduledDateTime) {
-      showSendStatus(`✓ Mensaje programado para ${scheduledDateTime.toLocaleString('es-ES')}`, 'success')
+      showSendStatus(`Mensaje programado para ${scheduledDateTime.toLocaleString('es-ES')}`, 'success')
     } else {
-      showSendStatus('✓ Mensaje enviado correctamente', 'success')
+      showSendStatus('Mensaje enviado correctamente', 'success')
     }
     
     // Efecto visual de confirmación en el botón

@@ -300,6 +300,15 @@ export async function initSchema(){
         alter table user_settings add column consent_signature_rect jsonb not null default '{}'::jsonb;
       end if;
     exception when others then null; end $$;
+    create table if not exists whatsapp_remote_sessions (
+      session_id VARCHAR(255) PRIMARY KEY,
+      session_data BYTEA not null,
+      metadata jsonb not null default '{}'::jsonb,
+      expires_at timestamptz null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists idx_whatsapp_remote_sessions_updated_at on whatsapp_remote_sessions(updated_at);
   `)
 }
 

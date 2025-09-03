@@ -122,21 +122,17 @@
 }
 
 /* Selector de fecha y hora personalizado */
+/* Input programación sin icono de fondo; usamos botón superpuesto */
 #waScheduleDateTime {
-  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="%23374151"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25m3 8.25-3-3m0 0-3 3m3-3H6.75m13.5-9a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15a1.5 1.5 0 0 1-1.5-1.5v-9a1.5 1.5 0 0 1 1.5-1.5h15Z"/></svg>');
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 16px;
-  padding-right: 28px;
+  padding-right: 34px; /* espacio para botón */
 }
 
+/* Ocultar indicador nativo para evitar doble icono */
 #waScheduleDateTime::-webkit-calendar-picker-indicator {
   opacity: 0;
-  position: absolute;
-  right: 8px;
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
 /* Toast/Notificación flotante para status */
