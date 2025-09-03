@@ -23,7 +23,17 @@ export function verifyAccess(token){
 
 export async function consumeRefresh(id){
   const rec = await pgAdapter.pgGetRefresh(id)
-  if(!rec || rec.revoked) return null
+  if(!rec || rec.revoked){
+    // Fallback: carrera posible si otro tab ya rotó; intentar último activo del mismo user sólo si rec existe revocado
+    if(rec && rec.revoked){
+      // Buscar otro token activo del mismo usuario (el recién rotado)
+      const latest = await pgAdapter.pgGetLatestActiveRefresh(rec.user_id)
+      if(latest && latest.id !== id && latest.exp >= Math.floor(Date.now()/1000)){
+        return { userId: latest.user_id, exp: latest.exp, revoked: latest.revoked, alt:true, id: latest.id }
+      }
+    }
+    return null
+  }
   const nowSec = Math.floor(Date.now()/1000)
   if(rec.exp < nowSec) return null
   return { userId: rec.user_id, exp: rec.exp, revoked: rec.revoked }

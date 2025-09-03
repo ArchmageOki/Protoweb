@@ -930,16 +930,34 @@ if (calEl) {
   const prev = document.getElementById('evt-titulo-auto-prev')
     if(!chk || !input) return
     const SETTINGS_KEY='app.settings'
-    function loadOrder(){
-      try { const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}'); return s.autoTitle?.order || [] } catch { return [] }
+    async function loadOrder(){
+      try {
+  const r = await authFetch(apiBase + '/data/settings')
+        if(r.ok){
+          const j = await r.json()
+          return j.settings?.auto_title_config?.order || []
+        }
+      } catch{}
+      return []
     }
-    function saveCheckboxState(){
-      try { const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}'); const next = { ...s, autoTitle:{ ...(s.autoTitle||{}), enabled: chk.checked } }; localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)) } catch {}
-    }
-    function loadCheckboxState(){
-      try { const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}'); return !!s.autoTitle?.enabled } catch { return false }
-    }
-    chk.checked = loadCheckboxState()
+  function saveCheckboxState(){} // ya no usamos localStorage
+  function loadCheckboxState(){ return false }
+    // Cargar estado persistente desde backend (prioridad) y fallback a localStorage
+    ;(async function syncInitialAutoTitle(){
+      try {
+  const r = await authFetch(apiBase + '/data/settings')
+        if(r.ok){
+          const data = await r.json()
+          const enabled = !!data.settings?.auto_title_enabled
+          chk.checked = enabled
+        } else {
+          chk.checked = loadCheckboxState()
+        }
+      } catch {
+        chk.checked = loadCheckboxState()
+      }
+      compute()
+    })()
     function compute(){
       if(!chk.checked){
         input.disabled=false
@@ -950,7 +968,8 @@ if (calEl) {
       }
       input.disabled=true
       hint?.classList.add('hidden') // ocultamos hint ahora que no queremos texto "Generado..."
-      const order = loadOrder()
+  let order = []
+  try { loadOrder().then(o=>{ order = o; recomputeWith(order) }).catch(()=>{}) } catch{}
       const iniHidden = document.getElementById('evt-inicio')
       const finHidden = document.getElementById('evt-fin')
       const clientSearch = document.getElementById('evt-client-search')
@@ -986,7 +1005,8 @@ if (calEl) {
       const notas = document.getElementById('evt-notas')?.value.trim() || ''
       const instagram = instagramHandle ? '@'+instagramHandle.replace(/^@/,'') : ''
       // Construir piezas (con placeholders vacíos, sin filtrar) para mantener separadores visibles
-      const pieces = order.map(k=>{
+  function recomputeWith(currentOrder){
+  const pieces = currentOrder.map(k=>{
         const norm = (val)=>{
           if(val==null) return ''
           const s = String(val).replace(/€/g,'').trim()
@@ -1009,18 +1029,33 @@ if (calEl) {
         }
       })
       // Si no hay ningún fragmento configurado, usar fallback
-      if(!order.length){ pieces.push(firstName || 'Evento') }
+  if(!currentOrder.length){ pieces.push(firstName || 'Evento') }
   // Ya no añadimos hora automáticamente; sólo mediante fragmentos seleccionados
       let title = pieces.join(' - ')
       // Normalizar espacios múltiples (por piezas vacías)
       title = title.replace(/\s{2,}/g,' ').trimEnd()
   // Eliminado prefijo de estrella para VIP en el título automático
-      input.value = title
+  input.value = title
   if(prev){ prev.textContent = title }
   if(msg){ msg.classList.add('hidden') } // oculto permanentemente
+  }
     }
-    chk.addEventListener('change', compute)
-    chk.addEventListener('change', saveCheckboxState)
+    chk.addEventListener('change', async ()=>{
+      compute(); saveCheckboxState();
+      // Persistir inmediatamente elección del usuario
+      try {
+        await authFetch(apiBase + '/data/settings', { method:'PUT', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ auto_title_enabled: chk.checked }) })
+      } catch(e){ /* silencioso */ }
+    })
+    // Reaplicar orden tras guardarse desde ajustes
+    window.addEventListener('autoTitle:orderSaved', e=>{
+      if(!chk.checked) return
+      try {
+        const newOrder = e.detail?.order || []
+        // Sobrescribir compute temporalmente con nuevo order
+        window.__autoTitleCompute && window.__autoTitleCompute()
+      } catch{}
+    })
     // Recalcular al cambiar hora inicio o cliente seleccionado
     document.getElementById('evt-inicio')?.addEventListener('change', ()=> chk.checked && compute())
     document.getElementById('evt-client-clear')?.addEventListener('click', ()=> chk.checked && compute())

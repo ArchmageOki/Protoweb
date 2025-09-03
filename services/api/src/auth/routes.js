@@ -78,7 +78,10 @@ router.post('/login', loginLimiter, async (req,res)=>{
 
 router.post('/refresh', async (req,res)=>{
   const rt = req.cookies?.rt
-  if(!rt) return res.status(401).json({ error:'no_refresh' })
+  if(!rt){
+    console.warn('[auth][refresh] falta cookie rt')
+    return res.status(401).json({ error:'no_refresh' })
+  }
   const rec = await consumeRefresh(rt)
   if(!rec){
     // Intentar detectar reuse de un token ya rotado/revocado
@@ -88,13 +91,26 @@ router.post('/refresh', async (req,res)=>{
       // Revocar todos los refresh del usuario implicado (defensa)
       await pgAdapter.pgRevokeAllUserRefresh(reuse.userId)
     }
+    console.warn('[auth][refresh] token inválido o revocado', rt)
     authMetrics.refresh_fail++
     return res.status(401).json({ error:'invalid_refresh' })
   }
-  const rot = await rotateRefresh(rt)
-  if(!rot) return res.status(401).json({ error:'refresh_rotation_failed' })
+  let rot = null
+  if(rec.alt){
+    console.warn('[auth][refresh] usando fallback alt token por carrera')
+    rot = await rotateRefresh(rec.id)
+  } else {
+    rot = await rotateRefresh(rt)
+  }
+  if(!rot){
+    console.warn('[auth][refresh] fallo al rotar', rt)
+    return res.status(401).json({ error:'refresh_rotation_failed' })
+  }
   const user = await pgAdapter.pgFindUserById(rot.userId)
-  if(!user) return res.status(401).json({ error:'user_missing' })
+  if(!user){
+    console.warn('[auth][refresh] usuario no encontrado', rot.userId)
+    return res.status(401).json({ error:'user_missing' })
+  }
   const { accessToken, accessExp } = await issueTokens(user)
   authMetrics.refresh_success++
   res.cookie('rt', rot.newId, { ...COOKIE_BASE, maxAge: 1000*(rec.exp - Math.floor(Date.now()/1000)) })
@@ -192,3 +208,12 @@ router.post('/resend-verification', async (req,res)=>{
 })
 
 export default router
+// Endpoint temporal de depuración (eliminar en producción)
+router.get('/refresh-debug', async (req,res)=>{
+  const rt = req.cookies?.rt || null
+  let record = null
+  if(rt){
+    try { record = await pgAdapter.pgGetRefresh(rt) } catch(e){ record = { error: e.message } }
+  }
+  res.json({ rt_present: !!rt, record: record ? { exists:true, revoked:record.revoked, exp:record.exp, user_id:record.user_id } : { exists:false } })
+})

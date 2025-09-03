@@ -1,0 +1,340 @@
+/* Estilos adicionales para la interfaz WhatsApp */
+
+/* Contenedor más estrecho y compacto */
+.max-w-xl {
+  max-width: 36rem; /* 576px - más estrecho y compacto */
+}
+
+/* Espaciado más compacto para proporciones cuadradas */
+.wa-message-container {
+  min-height: 400px;
+}
+
+/* Centrado vertical perfecto de botones y textarea */
+.flex.items-center {
+  align-items: center;
+}
+
+/* Botones circulares con mejor hover */
+.wa-circle-btn {
+  transition: all 0.15s ease;
+}
+
+.wa-circle-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Animación suave para el textarea auto-resize */
+#waSendMessageText {
+  transition: height 0.1s ease;
+  overflow-y: hidden;
+}
+
+/* Estilo del popup de emojis estilo WhatsApp oficial */
+#emojiPopup {
+  animation: fadeInUp 0.15s ease-out;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e2e8f0;
+  z-index: 9999 !important;
+}
+
+/* Flecha del popup */
+#emojiPopup::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 20px;
+  width: 12px;
+  height: 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-bottom: none;
+  border-right: none;
+  transform: rotate(45deg);
+}
+
+#emojiPopup::-webkit-scrollbar {
+  width: 6px;
+}
+
+#emojiPopup::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+#emojiPopup::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+#emojiPopup::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+#emojiPopup button:hover {
+  background-color: #f1f5f9;
+  transform: scale(1.1);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Estilo para el estado de archivos seleccionados */
+.file-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+}
+
+/* Animación del contador de caracteres */
+#waSendCharCount {
+  transition: color 0.2s ease;
+}
+
+#waSendCharCount.warning {
+  color: #f59e0b !important;
+}
+
+#waSendCharCount.danger {
+  color: #ef4444 !important;
+}
+
+/* Mejorar la apariencia del cliente seleccionado */
+#waSendSelectedClient {
+  border-left: 3px solid #10b981;
+}
+
+/* Botón enviar en header con mejor apariencia */
+#waSendBtn:not(:disabled):hover {
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+}
+
+/* Selector de fecha y hora personalizado */
+#waScheduleDateTime {
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="%23374151"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25m3 8.25-3-3m0 0-3 3m3-3H6.75m13.5-9a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-15a1.5 1.5 0 0 1-1.5-1.5v-9a1.5 1.5 0 0 1 1.5-1.5h15Z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px;
+  padding-right: 28px;
+}
+
+#waScheduleDateTime::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Toast/Notificación flotante para status */
+#waSendToast {
+  max-width: 360px;
+  min-width: 220px;
+  backdrop-filter: blur(8px);
+}
+
+#waSendToast.show {
+  opacity: 1 !important;
+  transform: translate(0%, -125%) scale(1) !important;
+  pointer-events: auto;
+}
+
+#waSendToast:not(.show) {
+  opacity: 0;
+  transform: translate(0%, -125%) scale(.95);
+}
+
+/* Estilos por tipo de mensaje */
+#waSendToast.success {
+  background-color: rgba(34, 197, 94, 0.95);
+}
+
+#waSendToast.error {
+  background-color: rgba(239, 68, 68, 0.95);
+}
+
+#waSendToast.loading {
+  background-color: rgba(59, 130, 246, 0.95);
+}
+
+#waSendToast.warning {
+  background-color: rgba(245, 158, 11, 0.95);
+}
+
+/* =============================
+  Layout de paneles igualados
+  ============================= */
+@media (min-width: 1024px) {
+  /* Altura mínima para que 10 filas de la tabla (aprox) quepan y el panel de mensaje acompañe */
+  #outboxSection.wh-panels-equal {
+    /* Cada fila ~40px (padding + texto) * 10 + header + paddings */
+    min-height: 480px;
+  }
+  #waMessagePanel.wh-panels-equal {
+    min-height: 480px;
+  }
+}
+
+/* Tabla outbox: limitar visual a 10 filas y habilitar scroll si excede */
+#outboxSection .overflow-x-auto {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+#outboxSection table tbody tr {
+  line-height: 1.1rem;
+}
+
+/* Historial debajo sin cambios */
+
+/* Iconos del toast */
+.toast-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Animación del icono de carga */
+#waSendToast.loading .toast-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Botón enviar circular al lado del textarea */
+#waSendBtn.flex-shrink-0 {
+  align-self: flex-end;
+}
+
+/* Responsive: mantener proporciones cuadradas en móviles */
+@media (max-width: 640px) {
+  .max-w-2xl {
+    max-width: calc(100vw - 2rem);
+    margin: 0 1rem;
+  }
+  
+  .wa-circle-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+  
+  .wa-circle-btn svg {
+    width: 1rem;
+    height: 1rem;
+  }
+  
+  #emojiPopup {
+    width: 380px !important;
+    grid-template-columns: repeat(8, 1fr);
+    max-height: 280px;
+  }
+  
+  /* Header responsive */
+  .flex.items-center.justify-between h2 {
+    font-size: 0.75rem;
+  }
+  
+  #waSendBtn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* =====================================================
+   UTILIDADES DE CENTRADO MANUAL 
+   ===================================================== */
+
+/* Cambiar estas clases para ajustar la alineación vertical manualmente */
+
+/* Contenedor principal del área de mensaje */
+.wa-message-area {
+  /* OPCIONES DE ALINEACIÓN VERTICAL: */
+  /* align-items: flex-start;   // Alinea todo arriba */
+  /* align-items: center;       // Alinea todo al centro (recomendado) */
+  /* align-items: flex-end;     // Alinea todo abajo */
+  /* align-items: baseline;     // Alinea por línea base del texto */
+  /* align-items: stretch;      // Estira todos al mismo tamaño */
+  
+  align-items: center !important; /* ← Cambiar esta línea */
+}
+
+/* Grupo de botones de la izquierda */
+.wa-button-group {
+  align-items: center !important; /* ← Cambiar esta línea */
+}
+
+/* Área de input (textarea + botón enviar) */
+.wa-input-area {
+  align-items: center !important; /* ← Cambiar esta línea */
+}
+
+/* AJUSTES INDIVIDUALES (descomenta para usar): */
+
+/* Botón emoji individual */
+.wa-emoji-btn {
+  margin-top: 0px;
+  align-self: flex-start;
+}
+
+/* Botón foto individual */
+.wa-photo-btn {
+  margin-top: 0px;
+  align-self: center;
+}
+
+/* Botón archivo individual */
+.wa-file-btn {
+  margin-top: 0px;
+  align-self: flex-end;
+}
+
+/* Textarea individual */
+.wa-textarea {
+  margin-top: 5px;
+  align-self: center;
+}
+
+/* Botón enviar individual */
+.wa-send-btn {
+  margin-bottom: 6px;
+  align-self: flex-end;
+}
+
+/* =====================================================
+   GUÍA DE USO:
+   
+   1. Para cambiar la alineación general:
+      - Cambia los valores en .wa-message-area, .wa-button-group, .wa-input-area
+   
+   2. Para ajustes finos individuales:
+      - Descomenta y modifica los elementos específicos
+      - Usa margin-top/bottom para mover arriba/abajo
+      - Usa align-self para sobrescribir la alineación del contenedor
+   
+   3. Valores útiles:
+      - align-items: center (centrado)
+      - align-items: flex-start (arriba)
+      - align-items: flex-end (abajo)
+      - margin-top: 2px (baja 2px)
+      - margin-top: -2px (sube 2px)
+   ===================================================== */

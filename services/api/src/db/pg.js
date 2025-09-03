@@ -60,7 +60,7 @@ export async function initSchema(){
     create index if not exists idx_evt_user on email_verification_tokens(user_id);
     create index if not exists idx_evt_exp on email_verification_tokens(exp);
     -- Clientes (datos pertenecen al usuario)
-    create table if not exists clients (
+  create table if not exists clients (
       id text primary key,
       user_id text not null references users(id) on delete cascade,
       created_at timestamptz not null default now(),
@@ -78,12 +78,19 @@ export async function initSchema(){
       total_amount numeric(14,2) not null default 0,
       last_appointment_at timestamptz null,
       notes text,
-    is_vip boolean not null default false,
-    completed_event_ids text[] not null default '{}'::text[]
+  is_vip boolean not null default false,
+  completed_event_ids text[] not null default '{}'::text[],
+  whatsapp_consent boolean null
     );
   -- Asegurar columna is_vip si la tabla ya existía
   alter table clients add column if not exists is_vip boolean not null default false;
   alter table clients add column if not exists completed_event_ids text[] not null default '{}'::text[];
+  alter table clients add column if not exists whatsapp_consent boolean null;
+  -- Migración tolerante: eliminar NOT NULL y default si existían para permitir estado indeterminado
+  do $$ begin
+    begin alter table clients alter column whatsapp_consent drop not null; exception when others then null; end;
+    begin alter table clients alter column whatsapp_consent drop default; exception when others then null; end;
+  end $$;
     create index if not exists idx_clients_user on clients(user_id);
     -- Migrar unicidad móvil/dni a ámbito por usuario
     do $$ begin
@@ -215,19 +222,82 @@ export async function initSchema(){
   alter table whatsapp_messages add column if not exists message_id text null;
   create index if not exists idx_wa_msgs_user_msgid on whatsapp_messages(user_id, message_id);
   -- message_id: id retornado por whatsapp-web.js (para correlacionar con estados futuros)
+    -- Cola de mensajes WhatsApp programados (outbox)
+    create table if not exists whatsapp_outbox (
+      id text primary key,
+      user_id text not null references users(id) on delete cascade,
+      client_id text null references clients(id) on delete set null,
+      phone text not null,
+      client_name text null,
+      instagram text null,
+      message_text text not null,
+      scheduled_at timestamptz not null,
+      status text not null default 'pending', -- pending|sending|sent|failed|cancelled
+      attempts int not null default 0,
+      last_error text null,
+      last_attempt_at timestamptz null,
+      sent_at timestamptz null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists idx_wa_outbox_user_status_sched on whatsapp_outbox(user_id, status, scheduled_at);
+    create index if not exists idx_wa_outbox_sched_status on whatsapp_outbox(status, scheduled_at);
+    -- Tokens de un solo uso para completar datos de cliente (flujo público)
+    create table if not exists client_completion_tokens (
+      id text primary key,
+      user_id text not null references users(id) on delete cascade,
+      client_id text not null references clients(id) on delete cascade,
+      used boolean not null default false,
+      created_at timestamptz not null default now(),
+      used_at timestamptz null
+    );
+    create index if not exists idx_cct_user_client on client_completion_tokens(user_id, client_id) where used=false;
     -- Ajustes de usuario (persistencia de configuraciones UI)
     create table if not exists user_settings (
       user_id text primary key references users(id) on delete cascade,
       extra_checks jsonb not null default '{}'::jsonb,
       clientes jsonb not null default '{}'::jsonb,
+      auto_title_config jsonb not null default '{}'::jsonb, -- variables/plantilla de título automático
+    auto_title_enabled boolean not null default true,      -- preferencia del usuario para usar título automático
+  business_needs_consent boolean not null default false, -- si el negocio gestiona consentimientos
+  consent_pdf_info jsonb not null default '{}'::jsonb, -- metadatos de la plantilla PDF (filename, size, mimetype)
+  consent_field_map jsonb not null default '{}'::jsonb, -- coordenadas de campos { first_name:{page,x,y}, ... }
+  consent_fixed_elements jsonb not null default '[]'::jsonb, -- elementos fijos [{id,text,x,y,fontSize}]
+  consent_signature text null, -- imagen base64 PNG
+  consent_signature_rect jsonb not null default '{}'::jsonb, -- {page,x,y,w,h,ratio}
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
     -- Migración tolerante: añadir columna clientes si falta
     do $$
     begin
+      -- Migración tolerante: añadir columnas que falten
       if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='clientes') then
         alter table user_settings add column clientes jsonb not null default '{}'::jsonb;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='auto_title_config') then
+        alter table user_settings add column auto_title_config jsonb not null default '{}'::jsonb;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='auto_title_enabled') then
+        alter table user_settings add column auto_title_enabled boolean not null default true;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='business_needs_consent') then
+        alter table user_settings add column business_needs_consent boolean not null default false;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='consent_pdf_info') then
+        alter table user_settings add column consent_pdf_info jsonb not null default '{}'::jsonb;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='consent_field_map') then
+        alter table user_settings add column consent_field_map jsonb not null default '{}'::jsonb;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='consent_fixed_elements') then
+        alter table user_settings add column consent_fixed_elements jsonb not null default '[]'::jsonb;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='consent_signature') then
+        alter table user_settings add column consent_signature text null;
+      end if;
+      if not exists (select 1 from information_schema.columns where table_name='user_settings' and column_name='consent_signature_rect') then
+        alter table user_settings add column consent_signature_rect jsonb not null default '{}'::jsonb;
       end if;
     exception when others then null; end $$;
   `)
@@ -271,6 +341,11 @@ export async function pgInsertRefresh(id, userId, exp, revoked=false){
 
 export async function pgGetRefresh(id){
   const { rows } = await pool.query('select * from refresh_tokens where id=$1', [id])
+  return rows[0] || null
+}
+
+export async function pgGetLatestActiveRefresh(userId){
+  const { rows } = await pool.query('select * from refresh_tokens where user_id=$1 and revoked=false order by exp desc limit 1', [userId])
   return rows[0] || null
 }
 
@@ -358,7 +433,7 @@ export async function pgCreateClient(id, userId, data){
     first_name=null, last_name=null,
     mobile=null,
     instagram=null, dni=null, address=null, postal_code=null, birth_date=null,
-  visits_count=0, total_amount=0, last_appointment_at=null, notes=null, is_vip=false, completed_event_ids=[]
+  visits_count=0, total_amount=0, last_appointment_at=null, notes=null, is_vip=false, completed_event_ids=[], whatsapp_consent=null
   } = data||{}
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || '—'
   // Unicidad móvil/dni se garantiza por índices compuestos (user_id,mobile) y (user_id,dni)
@@ -376,11 +451,11 @@ export async function pgCreateClient(id, userId, data){
     return v || null
   })()
   const { rows } = await pool.query(`insert into clients(
-      id,user_id,notes,first_name,last_name,full_name,mobile,instagram,dni,address,postal_code,birth_date,visits_count,total_amount,last_appointment_at,is_vip,completed_event_ids
+      id,user_id,notes,first_name,last_name,full_name,mobile,instagram,dni,address,postal_code,birth_date,visits_count,total_amount,last_appointment_at,is_vip,completed_event_ids,whatsapp_consent
     ) values(
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
     ) returning *`, [
-      id,userId,notes,first_name,last_name,full_name,finalMobile,normInstagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip, completed_event_ids
+  id,userId,notes,first_name,last_name,full_name,finalMobile,normInstagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip, completed_event_ids, whatsapp_consent
     ])
   return rows[0]
 }
@@ -389,7 +464,7 @@ export async function pgListClients(userId){
     id,user_id,created_at,updated_at,
     full_name,first_name,last_name,
     mobile,instagram,dni,address,postal_code,birth_date,
-  visits_count,total_amount,last_appointment_at,notes,is_vip,completed_event_ids
+  visits_count,total_amount,last_appointment_at,notes,is_vip,completed_event_ids,whatsapp_consent
     from clients where user_id=$1 order by created_at desc`, [userId])
   return rows
 }
@@ -398,7 +473,7 @@ export async function pgGetClient(userId, id){
     id,user_id,created_at,updated_at,
     full_name,first_name,last_name,
     mobile,instagram,dni,address,postal_code,birth_date,
-  visits_count,total_amount,last_appointment_at,notes,is_vip,completed_event_ids
+  visits_count,total_amount,last_appointment_at,notes,is_vip,completed_event_ids,whatsapp_consent
     from clients where user_id=$1 and id=$2`, [userId,id])
   return rows[0]||null
 }
@@ -410,7 +485,7 @@ export async function pgUpdateClient(userId, id, data){
     mobile=existing.mobile,
     instagram=existing.instagram, dni=existing.dni, address=existing.address, postal_code=existing.postal_code, birth_date=existing.birth_date,
   visits_count=existing.visits_count, total_amount=existing.total_amount, last_appointment_at=existing.last_appointment_at,
-  notes=existing.notes, is_vip=existing.is_vip, completed_event_ids=existing.completed_event_ids||[]
+  notes=existing.notes, is_vip=existing.is_vip, completed_event_ids=existing.completed_event_ids||[], whatsapp_consent= existing.whatsapp_consent
   } = data||{}
   const finalMobile = mobile
   const full_name = [first_name,last_name].filter(Boolean).join(' ').trim() || first_name || last_name || existing.full_name
@@ -426,9 +501,9 @@ export async function pgUpdateClient(userId, id, data){
   })()
   const { rows } = await pool.query(`update clients set
       notes=$3,first_name=$4,last_name=$5,full_name=$6,mobile=$7,instagram=$8,dni=$9,address=$10,postal_code=$11,birth_date=$12,
-      visits_count=$13,total_amount=$14,last_appointment_at=$15,is_vip=$16,completed_event_ids=$17,updated_at=now()
+      visits_count=$13,total_amount=$14,last_appointment_at=$15,is_vip=$16,completed_event_ids=$17,whatsapp_consent=$18,updated_at=now()
     where user_id=$1 and id=$2 returning *`, [
-      userId,id,notes,first_name,last_name,full_name,finalMobile,normInstagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip,completed_event_ids
+  userId,id,notes,first_name,last_name,full_name,finalMobile,normInstagram,dni,address,postal_code,bd,visits_count,total_amount,laa,is_vip,completed_event_ids, whatsapp_consent
     ])
   return rows[0]||null
 }
@@ -550,16 +625,131 @@ export async function pgListWhatsappMessages(userId, { limit=100, offset=0 }={})
 
 // --------- USER SETTINGS ---------
 export async function pgGetUserSettings(userId){
-  const { rows } = await pool.query('select user_id, extra_checks, clientes, created_at, updated_at from user_settings where user_id=$1', [userId])
+  try {
+    await pool.query(`
+      alter table user_settings add column if not exists auto_title_config jsonb not null default '{}'::jsonb;
+      alter table user_settings add column if not exists auto_title_enabled boolean not null default true;
+      alter table user_settings add column if not exists business_needs_consent boolean not null default false;
+      alter table user_settings add column if not exists consent_pdf_info jsonb not null default '{}'::jsonb;
+      alter table user_settings add column if not exists consent_field_map jsonb not null default '{}'::jsonb;
+      alter table user_settings add column if not exists consent_fixed_elements jsonb not null default '[]'::jsonb;
+      alter table user_settings add column if not exists consent_signature text null;
+      alter table user_settings add column if not exists consent_signature_rect jsonb not null default '{}'::jsonb;
+    `)
+  } catch(e) { /* silencioso */ }
+  const { rows } = await pool.query('select user_id, extra_checks, clientes, auto_title_config, auto_title_enabled, business_needs_consent, consent_pdf_info, consent_field_map, consent_fixed_elements, consent_signature, consent_signature_rect, created_at, updated_at from user_settings where user_id=$1', [userId])
   return rows[0]||null
 }
-export async function pgUpsertUserSettings(userId, { extra_checks={}, clientes={} }){
-  // Validaciones básicas
+export async function pgUpsertUserSettings(userId, { extra_checks={}, clientes={}, auto_title_config={}, auto_title_enabled=true, business_needs_consent=false, consent_pdf_info={}, consent_field_map={}, consent_fixed_elements=[], consent_signature=null, consent_signature_rect={} }){
+  try {
+    await pool.query(`
+      alter table user_settings add column if not exists auto_title_config jsonb not null default '{}'::jsonb;
+      alter table user_settings add column if not exists auto_title_enabled boolean not null default true;
+      alter table user_settings add column if not exists business_needs_consent boolean not null default false;
+      alter table user_settings add column if not exists consent_pdf_info jsonb not null default '{}'::jsonb;
+      alter table user_settings add column if not exists consent_field_map jsonb not null default '{}'::jsonb;
+      alter table user_settings add column if not exists consent_fixed_elements jsonb not null default '[]'::jsonb;
+      alter table user_settings add column if not exists consent_signature text null;
+      alter table user_settings add column if not exists consent_signature_rect jsonb not null default '{}'::jsonb;
+    `)
+  } catch(e) { /* silencioso */ }
   if(typeof extra_checks !== 'object' || Array.isArray(extra_checks)) extra_checks = {}
   if(typeof clientes !== 'object' || Array.isArray(clientes)) clientes = {}
-  const { rows } = await pool.query(`insert into user_settings(user_id,extra_checks,clientes)
-    values($1,$2,$3)
-    on conflict (user_id) do update set extra_checks=excluded.extra_checks, clientes=excluded.clientes, updated_at=now()
-    returning user_id, extra_checks, clientes, created_at, updated_at`, [userId, extra_checks, clientes])
+  if(typeof auto_title_config !== 'object' || Array.isArray(auto_title_config)) auto_title_config = {}
+  if(typeof consent_pdf_info !== 'object' || Array.isArray(consent_pdf_info)) consent_pdf_info = {}
+  if(typeof consent_field_map !== 'object' || Array.isArray(consent_field_map)) consent_field_map = {}
+  if(!Array.isArray(consent_fixed_elements)) consent_fixed_elements = []
+  if(typeof consent_signature_rect !== 'object' || Array.isArray(consent_signature_rect)) consent_signature_rect = {}
+  auto_title_enabled = !!auto_title_enabled
+  business_needs_consent = !!business_needs_consent
+  // Serialización defensiva para evitar estructuras no planas / prototipos extraños
+  try {
+    const serialized = JSON.stringify(consent_fixed_elements)
+    try { consent_fixed_elements = JSON.parse(serialized) } catch(_e){ consent_fixed_elements = [] }
+  } catch(_e){ consent_fixed_elements = [] }
+  try {
+    const serializedRect = JSON.stringify(consent_signature_rect)
+    try { consent_signature_rect = JSON.parse(serializedRect) } catch(_e){ consent_signature_rect = {} }
+  } catch(_e){ consent_signature_rect = {} }
+  // Log eliminado: fixed_elements param preview
+  // Preparar strings JSON explícitos para evitar doble serializaciones anómalas
+  const jExtra = JSON.stringify(extra_checks)
+  const jClientes = JSON.stringify(clientes)
+  const jAutoTitle = JSON.stringify(auto_title_config)
+  const jPdfInfo = JSON.stringify(consent_pdf_info)
+  const jFieldMap = JSON.stringify(consent_field_map)
+  const jFixed = JSON.stringify(consent_fixed_elements)
+  const jSigRect = JSON.stringify(consent_signature_rect)
+  // Log eliminado: param types y tamaños
+  const { rows } = await pool.query(`insert into user_settings(
+      user_id,extra_checks,clientes,auto_title_config,auto_title_enabled,business_needs_consent,consent_pdf_info,consent_field_map,consent_fixed_elements,consent_signature,consent_signature_rect)
+    values($1,$2::jsonb,$3::jsonb,$4::jsonb,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11::jsonb)
+    on conflict (user_id) do update set
+      extra_checks=excluded.extra_checks,
+      clientes=excluded.clientes,
+      auto_title_config=excluded.auto_title_config,
+      auto_title_enabled=excluded.auto_title_enabled,
+      business_needs_consent=excluded.business_needs_consent,
+      consent_pdf_info=excluded.consent_pdf_info,
+      consent_field_map=excluded.consent_field_map,
+      consent_fixed_elements=excluded.consent_fixed_elements,
+      consent_signature=excluded.consent_signature,
+      consent_signature_rect=excluded.consent_signature_rect,
+      updated_at=now()
+    returning user_id, extra_checks, clientes, auto_title_config, auto_title_enabled, business_needs_consent, consent_pdf_info, consent_field_map, consent_fixed_elements, consent_signature, consent_signature_rect, created_at, updated_at`, [userId, jExtra, jClientes, jAutoTitle, auto_title_enabled, business_needs_consent, jPdfInfo, jFieldMap, jFixed, consent_signature, jSigRect])
   return rows[0]
+}
+
+// --------- WHATSAPP OUTBOX ---------
+export async function pgOutboxInsert(id, userId, { client_id=null, phone, client_name=null, instagram=null, message_text, scheduled_at }){
+  if(!phone) throw new Error('phone required')
+  if(!message_text) throw new Error('message_text required')
+  const { rows } = await pool.query(`insert into whatsapp_outbox(
+    id,user_id,client_id,phone,client_name,instagram,message_text,scheduled_at
+  ) values($1,$2,$3,$4,$5,$6,$7,$8) returning *`, [
+    id,userId,client_id,phone,client_name,instagram,message_text,scheduled_at
+  ])
+  return rows[0]
+}
+export async function pgOutboxListPending(userId){
+  const { rows } = await pool.query(`select * from whatsapp_outbox where user_id=$1 and status in ('pending','sending') order by scheduled_at asc limit 500`, [userId])
+  return rows
+}
+export async function pgOutboxListDue(limit=20){
+  const { rows } = await pool.query(`select * from whatsapp_outbox where status='pending' and scheduled_at <= now() order by scheduled_at asc limit $1`, [limit])
+  return rows
+}
+export async function pgOutboxMarkSending(id){
+  const { rows } = await pool.query(`update whatsapp_outbox set status='sending', updated_at=now(), last_attempt_at=now(), attempts=attempts+1 where id=$1 and status='pending' returning *`, [id])
+  return rows[0]||null
+}
+export async function pgOutboxMarkResult(id, { ok, error=null }){
+  if(ok){
+    const { rows } = await pool.query(`update whatsapp_outbox set status='sent', sent_at=now(), updated_at=now() where id=$1 returning *`, [id])
+    return rows[0]||null
+  } else {
+    const { rows } = await pool.query(`update whatsapp_outbox set status=case when attempts>=5 then 'failed' else 'pending' end, last_error=$2, updated_at=now(), scheduled_at= case when attempts>=5 then scheduled_at else now() + interval '30 seconds' * (attempts+1) end where id=$1 returning *`, [id, error])
+    return rows[0]||null
+  }
+}
+export async function pgOutboxCancel(id, userId){
+  const { rows } = await pool.query(`update whatsapp_outbox set status='cancelled', updated_at=now() where id=$1 and user_id=$2 and status in ('pending','sending') returning *`, [id,userId])
+  return rows[0]||null
+}
+
+// --------- CLIENT COMPLETION TOKENS ---------
+export async function pgCreateClientCompletionToken(id, userId, clientId){
+  const { rows } = await pool.query(`insert into client_completion_tokens(id,user_id,client_id,used) values($1,$2,$3,false) returning *`, [id,userId,clientId])
+  return rows[0]
+}
+export async function pgGetClientCompletionToken(id){
+  const { rows } = await pool.query('select * from client_completion_tokens where id=$1', [id])
+  return rows[0]||null
+}
+export async function pgMarkClientCompletionTokenUsed(id){
+  await pool.query('update client_completion_tokens set used=true, used_at=now() where id=$1', [id])
+}
+export async function pgOutboxGet(id, userId){
+  const { rows } = await pool.query(`select * from whatsapp_outbox where id=$1 and user_id=$2`, [id,userId])
+  return rows[0]||null
 }

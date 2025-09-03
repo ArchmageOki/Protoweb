@@ -9,13 +9,13 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^7.1.2"
+    "vite": "^6.0.7"
   },
   "dependencies": {
-  "@fullcalendar/core": "^6.1.19",
-  "@fullcalendar/daygrid": "^6.1.19",
+    "@fullcalendar/core": "^6.1.19",
+    "@fullcalendar/daygrid": "^6.1.19",
     "@tailwindcss/vite": "^4.1.12",
-  "tailwindcss": "^4.1.12",
-  "qrcode": "^1.5.3"
+    "tailwindcss": "^4.1.12",
+    "qrcode": "^1.5.4"
   }
 }

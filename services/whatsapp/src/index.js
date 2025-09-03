@@ -13,6 +13,8 @@ app.use(express.json())
 // Almacén de sesiones por usuario
 const sessions = new Map()
 
+console.log(`[WhatsApp] PID ${process.pid} Node ${process.version} plataforma ${process.platform}`)
+
 // Middleware de autenticación
 function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '')
@@ -63,7 +65,7 @@ async function getOrCreateSession(userId) {
   
   // Event listeners
   client.on('qr', async (qr) => {
-    console.log(`[WhatsApp] QR generado para ${userId}`)
+  console.log(`[WhatsApp] QR generado para ${userId} (${new Date().toISOString()})`)
     session.status = 'QR'
     try {
       session.qrCode = await QRCode.toDataURL(qr)
@@ -319,6 +321,22 @@ app.post('/whatsapp/send', authMiddleware, async (req, res) => {
       error: 'Error enviando mensaje',
       details: error.message 
     })
+  }
+})
+
+// Forzar regeneración de QR (destruye cliente y crea uno nuevo) - uso diagnóstico
+app.post('/whatsapp/force-qr', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.user
+    const existing = sessions.get(id)
+    if (existing && existing.client) {
+      try { await existing.client.destroy() } catch {}
+    }
+    sessions.delete(id)
+    const newSession = await getOrCreateSession(id)
+    res.json({ status: newSession.status, forced: true })
+  } catch (e) {
+    res.status(500).json({ error: 'force_qr_failed', details: e.message })
   }
 })
 

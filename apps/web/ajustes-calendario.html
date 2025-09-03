@@ -96,11 +96,11 @@
     <script type="module" src="/src/main.js"></script>
     <script type="module" src="/src/user-menu.js"></script>
     <script type="module" src="/src/google-calendar-ui.js"></script>
-  <script type="module">
-      // Configuración de título automático (localStorage por usuario)
+    <script type="module">
+  import { authFetch, apiBase } from '/src/auth.js'
+  // Configuración de título automático (persistente sólo en backend)
       (function(){
-  const KEY='app.settings'
-  const API_BASE='/api/data'
+  const SETTINGS_ENDPOINT = apiBase + '/data/settings'
         const container = document.createElement('section')
     container.className='rounded-xl border border-slate-200 bg-white/90 backdrop-blur-sm p-6 shadow-sm'
         container.innerHTML = `
@@ -139,11 +139,12 @@
           { key:'precio_pagado', label:'Precio pagado' },
           { key:'notas', label:'Notas' },
         ]
-        function load(){
-          try { const saved = JSON.parse(localStorage.getItem(KEY)||'{}'); return saved.autoTitle?.order || [] } catch { return [] }
-        }
-        function save(order){
-          try { const prev = JSON.parse(localStorage.getItem(KEY)||'{}'); const next = { ...prev, autoTitle:{ ...(prev.autoTitle||{}), order } }; localStorage.setItem(KEY, JSON.stringify(next)) } catch {}
+        async function load(){
+          try {
+            const r = await authFetch(SETTINGS_ENDPOINT)
+            if(r.ok){ const j = await r.json(); return j.settings?.auto_title_config?.order || [] }
+          } catch{}
+          return []
         }
         const orderBox = container.querySelector('#auto-title-order')
         const listBox = container.querySelector('#auto-title-fragments')
@@ -151,8 +152,9 @@
         const resetBtn = container.querySelector('#auto-title-reset')
         const saveBtn = container.querySelector('#auto-title-save')
         const clearBtn = container.querySelector('#auto-title-clear')
-        let current = load()
-        function renderAvailable(){
+  let current = []
+  ;(async()=>{ current = await load(); renderAvailable(); renderOrder() })()
+  function renderAvailable(){
           listBox.innerHTML=''
           FRAGMENTS.forEach(f=>{
             const li = document.createElement('li')
@@ -270,10 +272,28 @@
           el?.classList.remove('opacity-40')
           dragState = null
         })
-        saveBtn.addEventListener('click', ()=>{ save(current); saveBtn.disabled=true; const orig = saveBtn.textContent; saveBtn.textContent='Guardado'; setTimeout(()=>{ saveBtn.textContent=orig; saveBtn.disabled=false }, 1200) })
+        saveBtn.addEventListener('click', async ()=>{ 
+          saveBtn.disabled = true
+          const orig = saveBtn.textContent
+          saveBtn.textContent='Guardando...'
+          try {
+            const payload = { auto_title_config: { order: current } }
+            const r = await authFetch(SETTINGS_ENDPOINT, { method:'PUT', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+            if(!r.ok) throw new Error('save_failed')
+            saveBtn.textContent='Guardado'
+            // Emitir evento global para que month.js pueda refrescar si está abierto
+            window.dispatchEvent(new CustomEvent('autoTitle:orderSaved', { detail:{ order: current } }))
+          } catch(e){
+            console.error('[auto-title][save] error', e)
+            saveBtn.textContent='Error'
+            setTimeout(()=>{ saveBtn.textContent=orig }, 1800)
+          } finally {
+            setTimeout(()=>{ saveBtn.disabled=false; if(saveBtn.textContent==='Guardado') saveBtn.textContent=orig }, 1200)
+          }
+        })
         clearBtn.addEventListener('click', ()=>{ current=[]; renderAvailable(); renderOrder() })
-        resetBtn.addEventListener('click', ()=>{ current=['nombre']; renderAvailable(); renderOrder() })
-        renderAvailable(); renderOrder()
+  resetBtn.addEventListener('click', ()=>{ current=['nombre']; renderAvailable(); renderOrder() })
+  // render inicial movido tras carga async
       })()
     </script>
     <script type="module">

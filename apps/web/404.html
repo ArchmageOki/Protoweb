@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <link rel="stylesheet" href="/src/style.css" />
+  <title>Página no encontrada</title>
+</head>
+<body class="bg-gray-50 text-slate-800 min-h-screen flex flex-col">
+  <main class="flex-1 flex items-center justify-center p-6">
+    <div class="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-8 shadow-sm text-center space-y-5">
+      <div class="mx-auto w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-9 w-9 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg>
+      </div>
+      <h1 class="text-2xl font-semibold" id="title">Página no encontrada</h1>
+      <p id="desc" class="text-sm text-slate-600 leading-relaxed">La página que buscas no existe o ha sido movida.</p>
+  <a id="home-link" href="/index.html" class="inline-flex items-center justify-center rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800">Ir al inicio</a>
+      <p class="text-[11px] text-slate-400" id="extra"></p>
+    </div>
+  </main>
+  <script type="module">
+    const p = new URLSearchParams(location.search)
+    const reason = p.get('reason')
+    const t = document.getElementById('title')
+    const d = document.getElementById('desc')
+    const e = document.getElementById('extra')
+    const homeLink = document.getElementById('home-link')
+    if(reason === 'token'){
+      t.textContent = 'Enlace no válido o caducado'
+      d.textContent = 'El enlace que has utilizado ya no es válido. Puede haber expirado o ya fue usado.'
+      e.textContent = 'Si necesitas un nuevo enlace, contacta con el establecimiento para que te lo reenvíen.'
+      homeLink?.remove()
+    } else if(reason === 'missing-token'){
+      t.textContent = 'Token ausente'
+      d.textContent = 'Esta página requiere un parámetro de acceso que no se ha proporcionado.'
+      homeLink?.remove()
+    }
+  </script>
+</body>
+</html>

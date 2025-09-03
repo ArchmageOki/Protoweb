@@ -1,5 +1,6 @@
 // WhatsApp Messages functionality
 import { apiBase, authFetch } from './auth.js'
+import { initEmojiPicker } from './emoji-picker.js'
 
 // Estado de WhatsApp
 let waStatusInterval = null
@@ -24,6 +25,41 @@ const waSendMessageText = document.getElementById('waSendMessageText')
 const waSendBtn = document.getElementById('waSendBtn')
 const waSendStatus = document.getElementById('waSendStatus')
 const waSendCharCount = document.getElementById('waSendCharCount')
+
+// Botones de interfaz WhatsApp
+const emojiBtn = document.getElementById('emojiBtn')
+const photoBtn = document.getElementById('photoBtn')
+const fileBtn = document.getElementById('fileBtn')
+
+// Outbox elementos
+const outboxTbody = document.getElementById('outboxTbody')
+const outboxCount = document.getElementById('outboxCount')
+const outboxRefresh = document.getElementById('outboxRefresh')
+
+// Selección de programación
+let scheduleOffsetMinutes = 0
+let scheduledDateTime = null
+const waScheduleDateTime = document.getElementById('waScheduleDateTime')
+if (waScheduleDateTime) {
+  // Configurar fecha mínima (ahora)
+  const now = new Date()
+  const nowString = now.toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM
+  waScheduleDateTime.min = nowString
+  
+  waScheduleDateTime.addEventListener('change', () => {
+    const selectedDate = new Date(waScheduleDateTime.value)
+    const currentDate = new Date()
+    
+    if (selectedDate > currentDate) {
+      scheduledDateTime = selectedDate
+      scheduleOffsetMinutes = Math.round((selectedDate - currentDate) / (1000 * 60))
+    } else {
+      scheduledDateTime = null
+      scheduleOffsetMinutes = 0
+      waScheduleDateTime.value = ''
+    }
+  })
+}
 
 // Historial de mensajes
 const messageHistoryCount = document.getElementById('messageHistoryCount')
@@ -118,21 +154,18 @@ function updateFormAvailability(status, isFullyReady = false) {
   
   if (!isReady) {
     if (status === 'ERROR' || status === 'AUTH_FAILURE') {
-      waSendStatus.textContent = 'Error en WhatsApp. Reinicia la sesión.'
-      waSendStatus.className = 'text-xs text-red-500'
+      // Solo mostrar toast para errores críticos, no para estados normales
+      // showSendStatus('Error en WhatsApp. Reinicia la sesión.', 'error')
     } else if (status === 'DISCONNECTED') {
-      waSendStatus.textContent = 'WhatsApp desconectado'
-      waSendStatus.className = 'text-xs text-orange-500'
+      // showSendStatus('WhatsApp desconectado', 'warning')  
     } else {
-      waSendStatus.textContent = 'WhatsApp no está conectado'
-      waSendStatus.className = 'text-xs text-red-500'
+      // showSendStatus('WhatsApp no está conectado', 'warning')
     }
   } else {
     if (status === 'READY' && !isFullyReady) {
-      waSendStatus.textContent = 'Conectado (funcionalidad limitada)'
-      waSendStatus.className = 'text-xs text-yellow-600'
+      // showSendStatus('Conectado (funcionalidad limitada)', 'warning')
     } else {
-      waSendStatus.textContent = ''
+      // Estado conectado correctamente - no mostrar nada
     }
   }
 }
@@ -179,11 +212,9 @@ function selectClient(client) {
   
   waSendClientSearch.value = parts.join(' · ')
   waSendClientSearch.disabled = true
-  waSendClientSearch.className += ' cursor-not-allowed bg-slate-100 opacity-70'
+  waSendClientSearch.className = waSendClientSearch.className.replace(' focus:ring-2 focus:ring-green-500 focus:border-green-500', '') + ' bg-slate-50 cursor-not-allowed'
   
-  waSendSelectedClient.textContent = `Cliente seleccionado: ${name} (${client.mobile})`
-  waSendSelectedClient.classList.remove('hidden')
-  
+  // Ocultar resultados inmediatamente al seleccionar
   waSendClientResults.classList.add('hidden')
   waSendClientClear.classList.remove('hidden')
 }
@@ -194,10 +225,12 @@ function clearClientSelection() {
   waSendClientId.value = ''
   waSendClientSearch.value = ''
   waSendClientSearch.disabled = false
-  waSendClientSearch.className = waSendClientSearch.className.replace(' cursor-not-allowed bg-slate-100 opacity-70', '')
-  waSendSelectedClient.classList.add('hidden')
+  waSendClientSearch.className = 'w-full border border-slate-300 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500'
   waSendClientResults.classList.add('hidden')
   waSendClientClear.classList.add('hidden')
+  
+  // Enfocar el campo de búsqueda tras limpiar
+  waSendClientSearch.focus()
 }
 
 // Normalizar número de teléfono para España
@@ -223,47 +256,55 @@ function normalizePhoneNumber(phone) {
 // Enviar mensaje de WhatsApp
 async function sendWhatsAppMessage() {
   if (!selectedClient) {
-    waSendStatus.textContent = 'Selecciona un cliente primero'
-    waSendStatus.className = 'text-xs text-red-500'
+    showSendStatus('Selecciona un cliente primero', 'error')
     return
   }
   
   const messageText = waSendMessageText.value.trim()
   if (!messageText) {
-    waSendStatus.textContent = 'Escribe un mensaje'
-    waSendStatus.className = 'text-xs text-red-500'
+    showSendStatus('Escribe un mensaje', 'error')
     return
   }
   
   if (!selectedClient.mobile) {
-    waSendStatus.textContent = 'El cliente no tiene número de teléfono'
-    waSendStatus.className = 'text-xs text-red-500'
+    showSendStatus('El cliente no tiene número de teléfono', 'error')
     return
   }
   
   const phoneNumber = normalizePhoneNumber(selectedClient.mobile)
   if (!phoneNumber) {
-    waSendStatus.textContent = 'Número de teléfono inválido'
-    waSendStatus.className = 'text-xs text-red-500'
+    showSendStatus('Número de teléfono inválido', 'error')
     return
   }
   
   try {
+    // Estado de envío
     waSendBtn.disabled = true
-    waSendBtn.textContent = 'Enviando...'
-    waSendStatus.textContent = 'Enviando mensaje...'
-    waSendStatus.className = 'text-xs text-blue-500'
+    waSendBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 animate-spin">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+      </svg>
+    `
+    
+    showSendStatus('Enviando mensaje...', 'loading')
+    
+    const requestData = {
+      phone: phoneNumber,
+      message: messageText,
+      clientId: selectedClient.id,
+      clientName: selectedClient.full_name || selectedClient.first_name || '(Sin nombre)',
+      clientInstagram: selectedClient.instagram
+    }
+    
+    // Si hay programación, incluirla
+    if (scheduledDateTime) {
+      requestData.scheduledFor = scheduledDateTime.toISOString()
+    }
     
     const response = await authFetch(apiBase + '/data/whatsapp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phone: phoneNumber,
-        message: messageText,
-        clientId: selectedClient.id,
-        clientName: selectedClient.full_name || selectedClient.first_name || '(Sin nombre)',
-        clientInstagram: selectedClient.instagram
-      })
+      body: JSON.stringify(requestData)
     })
     
     if (!response.ok) {
@@ -277,16 +318,41 @@ async function sendWhatsAppMessage() {
     
     const result = await response.json()
     
-    waSendStatus.textContent = 'Mensaje enviado correctamente'
-    waSendStatus.className = 'text-xs text-green-500'
+    // Confirmación visual exitosa
+    if (scheduledDateTime) {
+      showSendStatus(`✓ Mensaje programado para ${scheduledDateTime.toLocaleString('es-ES')}`, 'success')
+    } else {
+      showSendStatus('✓ Mensaje enviado correctamente', 'success')
+    }
     
-    // Limpiar formulario
-    waSendMessageText.value = ''
-    clearClientSelection()
-    updateCharCounter()
+    // Efecto visual de confirmación en el botón
+    waSendBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-white">
+        <path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
+      </svg>
+    `
+    waSendBtn.className = waSendBtn.className.replace('bg-green-600 hover:bg-green-700', 'bg-green-500')
     
-    // Recargar historial
-    loadMessageHistory()
+    // Limpiar formulario después de 1.5 segundos
+    setTimeout(() => {
+      waSendMessageText.value = ''
+      clearClientSelection()
+      
+      // Reset programación
+      if (waScheduleDateTime) {
+        waScheduleDateTime.value = ''
+        scheduledDateTime = null
+        scheduleOffsetMinutes = 0
+      }
+      
+      updateCharCounter()
+      
+      // Recargar historial y outbox
+      loadMessageHistory()
+      loadOutbox()
+      
+      showSendStatus('', 'clear')
+    }, 1500)
     
   } catch (error) {
     console.error('Error enviando mensaje:', error)
@@ -294,7 +360,7 @@ async function sendWhatsAppMessage() {
     let errorMessage = 'Error enviando mensaje'
     
     if (error.needsRestart) {
-      errorMessage = 'Error de WhatsApp. Reinicia la sesión e inténtalo de nuevo.'
+      errorMessage = '⚠️ Error de WhatsApp. Reinicia la sesión e inténtalo de nuevo.'
       
       // Actualizar estado para mostrar que necesita reinicio
       waStatusBadge.textContent = 'Necesita reinicio'
@@ -305,26 +371,93 @@ async function sendWhatsAppMessage() {
       errorMessage = error.message
     }
     
-    waSendStatus.textContent = errorMessage
-    waSendStatus.className = 'text-xs text-red-500'
-  } finally {
-    const currentStatus = currentWaStatus || 'NO_SESSION'
-    waSendBtn.disabled = currentStatus !== 'READY' && currentStatus !== 'AUTHENTICATED'
-    waSendBtn.textContent = 'Enviar'
+    showSendStatus(errorMessage, 'error')
+    resetSendButton()
   }
+}
+
+// Función para mostrar estados del envío con toast
+function showSendStatus(message, type) {
+  const toast = document.getElementById('waSendToast')
+  const toastMessage = toast.querySelector('.toast-message')
+  const toastIcon = toast.querySelector('.toast-icon')
+  
+  if (!toast || !message || type === 'clear') {
+    hideToast()
+    return
+  }
+  
+  // Configurar el mensaje
+  toastMessage.textContent = message
+  
+  // Configurar el icono según el tipo
+  const icons = {
+    success: '✓',
+    error: '⚠',
+    loading: '⟳',
+    warning: '!'
+  }
+  
+  toastIcon.textContent = icons[type] || ''
+  
+  // Limpiar clases previas y agregar la nueva
+  // Reset base classes (posicionado dentro del contenedor)
+  toast.className = 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-2 rounded-lg shadow-lg text-sm font-medium text-white z-30 transition-all duration-300 opacity-0 scale-95 pointer-events-none'
+  toast.classList.add(type, 'show')
+  
+  // Auto-ocultar después de cierto tiempo (excepto loading)
+  if (type !== 'loading') {
+    const hideTimeout = type === 'success' ? 2000 : 4000
+    setTimeout(hideToast, hideTimeout)
+  }
+}
+
+// Función para ocultar el toast
+function hideToast() {
+  const toast = document.getElementById('waSendToast')
+  if (toast) {
+  toast.classList.remove('show', 'success', 'error', 'loading', 'warning')
+  // Mantener base classes para siguiente aparición
+  }
+}
+
+// Función para resetear el botón de envío
+function resetSendButton() {
+  if (!waSendBtn) return
+  
+  const currentStatus = currentWaStatus || 'NO_SESSION'
+  const hasText = waSendMessageText.value.trim().length > 0
+  const hasClient = selectedClient !== null
+  const isReady = currentStatus === 'READY' || currentStatus === 'AUTHENTICATED'
+  
+  waSendBtn.disabled = !hasText || !hasClient || !isReady
+  waSendBtn.className = 'w-11 h-11 rounded-full bg-green-600 hover:bg-green-700 disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors flex-shrink-0'
+  waSendBtn.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+      <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z"/>
+    </svg>
+  `
 }
 
 // Actualizar contador de caracteres
 function updateCharCounter() {
-  const count = waSendMessageText.value.length
-  waSendCharCount.textContent = count
+  const count = waSendMessageText?.value.length || 0
   
-  if (count > 900) {
-    waSendCharCount.className = 'text-red-500 font-medium'
-  } else if (count > 800) {
-    waSendCharCount.className = 'text-yellow-600'
-  } else {
-    waSendCharCount.className = ''
+  // Habilitar/deshabilitar botón según contenido
+  if (waSendBtn) {
+    const hasText = count > 0
+    const hasClient = selectedClient !== null
+    const currentStatus = currentWaStatus || 'NO_SESSION'
+    const isReady = currentStatus === 'READY' || currentStatus === 'AUTHENTICATED'
+    
+    waSendBtn.disabled = !hasText || !hasClient || !isReady
+    
+    // Cambiar opacidad visual del botón
+    if (hasText && hasClient && isReady) {
+      waSendBtn.style.opacity = '1'
+    } else {
+      waSendBtn.style.opacity = '0.5'
+    }
   }
 }
 
@@ -357,6 +490,46 @@ async function loadMessageHistory() {
     console.error('Error cargando historial:', error)
   }
 }
+
+// ===== OUTBOX =====
+async function loadOutbox(){
+  if(!outboxTbody) return
+  try {
+    const resp = await authFetch(apiBase + '/data/whatsapp/outbox')
+    if(!resp.ok) throw new Error('outbox fetch failed')
+    const data = await resp.json()
+    const items = data.items||[]
+    outboxCount && (outboxCount.textContent = items.length + ' pendientes')
+    outboxTbody.innerHTML = ''
+    if(!items.length){
+      outboxTbody.innerHTML = '<tr class="empty-row"><td colspan="7" class="py-6 text-center text-slate-400">Sin mensajes programados</td></tr>'
+      return
+    }
+    const now = Date.now()
+    for(const it of items){
+      const sched = new Date(it.scheduled_at)
+      const etaMs = sched - now
+      const eta = etaMs > 0 ? Math.round(etaMs/60000)+'m' : 'ahora'
+      const tr = document.createElement('tr')
+      tr.innerHTML = `
+        <td class="py-2 pr-4 whitespace-nowrap">${sched.toLocaleString()}<br><span class="text-[10px] text-slate-400">${eta}</span></td>
+        <td class="py-2 pr-4">${it.phone}</td>
+        <td class="py-2 pr-4">${it.client_name||''}</td>
+        <td class="py-2 pr-4">${it.instagram?('@'+it.instagram):''}</td>
+        <td class="py-2 pr-4 max-w-xs truncate" title="${(it.message_text||'').replace(/"/g,'&quot;')}">${it.message_text||''}</td>
+        <td class="py-2 pr-4">${it.status}</td>
+        <td class="py-2 pr-4 text-right">
+          <button data-cancel="${it.id}" class="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-red-50 hover:border-red-400 hover:text-red-600">Cancelar</button>
+        </td>`
+      outboxTbody.appendChild(tr)
+    }
+  } catch(e){ console.error('loadOutbox error', e) }
+}
+async function cancelOutbox(id){
+  try { const r = await authFetch(apiBase + '/data/whatsapp/outbox/'+id+'/cancel', { method:'POST' }); if(r.ok) loadOutbox() } catch(e){ console.error('cancelOutbox', e) }
+}
+outboxRefresh?.addEventListener('click', loadOutbox)
+outboxTbody?.addEventListener('click', e=>{ const btn = e.target.closest('button[data-cancel]'); if(btn) cancelOutbox(btn.getAttribute('data-cancel')) })
 
 // Reiniciar sesión de WhatsApp
 async function resetWhatsAppSession() {
@@ -435,20 +608,138 @@ waSendClientSearch?.addEventListener('input', () => {
   }, 200)
 })
 
-// Cerrar resultados al hacer clic fuera
+// Cerrar resultados al hacer clic fuera y cerrar popups
 document.addEventListener('click', (e) => {
+  // Cerrar desplegable de clientes
   if (!e.target.closest('#waClientPicker')) {
     waSendClientResults?.classList.add('hidden')
+  }
+  
+  // Cerrar popup de emojis
+  const popup = document.getElementById('emojiPopup')
+  if (popup && !emojiBtn?.contains(e.target) && !popup.contains(e.target)) {
+    popup.remove()
   }
 })
 
 // Contador de caracteres en tiempo real
 waSendMessageText?.addEventListener('input', updateCharCounter)
 
+// Navegación con teclado en el desplegable de clientes
+waSendClientSearch?.addEventListener('keydown', (e) => {
+  const results = waSendClientResults.querySelectorAll('button')
+  const isVisible = !waSendClientResults.classList.contains('hidden')
+  
+  if (!isVisible || results.length === 0) return
+  
+  let selectedIndex = Array.from(results).findIndex(btn => btn.classList.contains('bg-slate-100'))
+  
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault()
+      if (selectedIndex < results.length - 1) {
+        results[selectedIndex]?.classList.remove('bg-slate-100')
+        selectedIndex++
+        results[selectedIndex].classList.add('bg-slate-100')
+        results[selectedIndex].scrollIntoView({ block: 'nearest' })
+      }
+      break
+    
+    case 'ArrowUp':
+      e.preventDefault()
+      if (selectedIndex > 0) {
+        results[selectedIndex].classList.remove('bg-slate-100')
+        selectedIndex--
+        results[selectedIndex].classList.add('bg-slate-100')
+        results[selectedIndex].scrollIntoView({ block: 'nearest' })
+      }
+      break
+    
+    case 'Enter':
+      e.preventDefault()
+      if (selectedIndex >= 0) {
+        results[selectedIndex].click()
+      }
+      break
+    
+    case 'Escape':
+      e.preventDefault()
+      waSendClientResults.classList.add('hidden')
+      break
+  }
+})
+
+// Envío rápido con Ctrl+Enter
+waSendMessageText?.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault()
+    if (!waSendBtn.disabled) {
+      waSendForm.dispatchEvent(new Event('submit'))
+    }
+  }
+})
+
 // Envío del formulario
 waSendForm?.addEventListener('submit', (e) => {
   e.preventDefault()
-  sendWhatsAppMessage()
+  if(scheduleOffsetMinutes > 0){
+    // Programar en outbox
+    if(!selectedClient){
+      waSendStatus.textContent = 'Selecciona un cliente primero'
+      waSendStatus.className = 'text-xs text-red-500'
+      return
+    }
+    const messageText = waSendMessageText.value.trim()
+    if(!messageText){
+      waSendStatus.textContent = 'Escribe un mensaje'
+      waSendStatus.className = 'text-xs text-red-500'
+      return
+    }
+    const phoneNumber = normalizePhoneNumber(selectedClient.mobile)
+    if(!phoneNumber){
+      waSendStatus.textContent = 'Número inválido'
+      waSendStatus.className = 'text-xs text-red-500'
+      return
+    }
+    waSendBtn.disabled = true
+    const scheduleText = scheduledDateTime ? 
+      `Programando para ${scheduledDateTime.toLocaleString('es-ES')}...` : 
+      'Programando...'
+    waSendStatus.textContent = scheduleText
+    waSendStatus.className = 'text-xs text-slate-500'
+    const schedAt = scheduledDateTime ? scheduledDateTime.toISOString() : new Date(Date.now() + scheduleOffsetMinutes*60000).toISOString()
+    authFetch(apiBase + '/data/whatsapp/outbox', {
+      method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({
+        phone: phoneNumber,
+        client_id: selectedClient.id,
+        client_name: selectedClient.full_name || selectedClient.first_name || '(Sin nombre)',
+        instagram: selectedClient.instagram,
+        message_text: messageText,
+        scheduled_at: schedAt
+      })
+    }).then(async resp=>{
+      const data = await resp.json().catch(()=>({}))
+      if(resp.ok){
+        waSendStatus.textContent = 'Programado'
+        waSendStatus.className = 'text-xs text-green-600'
+        waSendMessageText.value=''
+        waScheduleDateTime.value=''
+        scheduledDateTime = null
+        scheduleOffsetMinutes = 0
+        updateCharCounter()
+        loadOutbox()
+        setTimeout(()=>{ waSendStatus.textContent='' }, 2500)
+      } else {
+        waSendStatus.textContent = data.error || 'Error programando'
+        waSendStatus.className = 'text-xs text-red-500'
+      }
+    }).catch(()=>{
+      waSendStatus.textContent = 'Error de red'
+      waSendStatus.className = 'text-xs text-red-500'
+    }).finally(()=>{ waSendBtn.disabled = false })
+  } else {
+    sendWhatsAppMessage()
+  }
 })
 
 // Botón de reset de sesión
@@ -460,6 +751,127 @@ waSendClientClear?.addEventListener('click', () => {
   waSendClientSearch?.focus()
 })
 
+// ===== INTERFAZ WHATSAPP =====
+
+// Auto-resize del textarea
+waSendMessageText?.addEventListener('input', function() {
+  this.style.height = '44px'
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px'
+})
+
+// Funcionalidad de botones WhatsApp  
+// Inicializar selector de emojis
+initEmojiPicker(emojiBtn, waSendMessageText, updateCharCounter)
+
+photoBtn?.addEventListener('click', () => {
+  // Emojis oficiales de WhatsApp (los más usados en orden de popularidad)
+  const emojis = [
+    '😂', '❤️', '🤣', '👍', '😭', '🙏', '�', '🥰', '😍', '😊',
+    '🎉', '�', '�', '🥺', '�', '�🔥', '☺️', '♥️', '�', '🤗',
+    '💙', '😉', '🙂', '🤔', '😳', '🥶', '😱', '😡', '😢', '🎂',
+    '🌹', '�💯', '�', '⭐', '🌟', '💫', '🚀', '⚡', '�', '💝',
+    '�', '�🎊', '🎵', '🎶', '💃', '🕺', '👏', '🤝', '👋', '💪'
+  ]
+  
+  // Crear popup de emojis estilo WhatsApp
+  const existingPopup = document.getElementById('emojiPopup')
+  if (existingPopup) {
+    existingPopup.remove()
+    return
+  }
+  
+  const popup = document.createElement('div')
+  popup.id = 'emojiPopup'
+  popup.className = 'fixed bg-white border border-slate-200 rounded-lg p-3 shadow-lg grid grid-cols-10 gap-1 text-lg z-50'
+  popup.style.width = '360px'
+  popup.style.maxHeight = '200px'
+  popup.style.overflowY = 'auto'
+  
+  // Posicionar el popup relativo al botón de emoji
+  const rect = emojiBtn.getBoundingClientRect()
+  popup.style.left = `${rect.left}px`
+  popup.style.bottom = `${window.innerHeight - rect.top + 10}px`
+  
+  // Ajustar posición si se sale de la pantalla
+  const popupWidth = 360
+  if (rect.left + popupWidth > window.innerWidth) {
+    popup.style.left = `${window.innerWidth - popupWidth - 10}px`
+  }
+  if (rect.left < 0) {
+    popup.style.left = '10px'
+  }
+  
+  // Título del popup
+  const title = document.createElement('div')
+  title.className = 'col-span-10 text-xs font-medium text-slate-600 pb-2 border-b border-slate-100 mb-2'
+  title.textContent = 'Emojis frecuentes'
+  popup.appendChild(title)
+  
+  emojis.forEach(emoji => {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.textContent = emoji
+    btn.className = 'hover:bg-slate-100 w-8 h-8 rounded flex items-center justify-center transition-colors'
+    btn.addEventListener('click', () => {
+      const textarea = waSendMessageText
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const text = textarea.value
+      textarea.value = text.slice(0, start) + emoji + text.slice(end)
+      textarea.setSelectionRange(start + emoji.length, start + emoji.length)
+      textarea.focus()
+      updateCharCounter()
+      popup.remove()
+    })
+    popup.appendChild(btn)
+  })
+  
+  emojiBtn.parentElement.style.position = 'relative'
+  document.body.appendChild(popup)
+})
+
+photoBtn?.addEventListener('click', () => {
+  // Crear input file para fotos
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+      showSendStatus(`📷 Foto seleccionada: ${e.target.files[0].name}`, 'success')
+    }
+  })
+  input.click()
+})
+
+fileBtn?.addEventListener('click', () => {
+  // Crear input file para archivos
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt'
+  input.addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+      showSendStatus(`📎 Archivo seleccionado: ${e.target.files[0].name}`, 'success')
+    }
+  })
+  input.click()
+})
+
+// Cerrar popups al redimensionar o hacer scroll
+
+window.addEventListener('resize', () => {
+  const popup = document.getElementById('emojiPopup')
+  if (popup) {
+    popup.remove()
+  }
+})
+
+window.addEventListener('scroll', () => {
+  const popup = document.getElementById('emojiPopup')
+  if (popup) {
+    popup.remove()
+  }
+})
+
 // ===== INICIALIZACIÓN =====
 
 // Inicializar cuando se carga la página
@@ -467,6 +879,8 @@ document.addEventListener('DOMContentLoaded', () => {
   startStatusPolling()
   loadMessageHistory()
   updateCharCounter()
+  loadOutbox()
+  setInterval(loadOutbox, 15000)
 })
 
 // Limpiar interval al salir

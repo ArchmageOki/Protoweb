@@ -65,14 +65,6 @@
     </main>
 
     <script type="module" src="/src/login.js"></script>
-    <script type="module">
-      (function(){
-        const params = new URLSearchParams(location.search)
-        if(params.get('registered')==='1'){
-          const box = document.getElementById('postRegister')
-          if(box) box.classList.remove('hidden')
-        }
-      })()
-    </script>
+    <script type="module" src="/src/index-params.js"></script>
   </body>
   </html>

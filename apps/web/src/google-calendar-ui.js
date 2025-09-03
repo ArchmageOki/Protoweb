@@ -26,8 +26,23 @@ import { authFetch, apiBase } from './auth.js'
         return id
       }
       if(data.connected){
-        const pending = data.account?.pending
-        st.classList.remove('hidden'); st.textContent = pending ? 'Conectado (selecciona calendario)' : 'Conectado con Google'; st.className='text-xs font-normal px-2 py-1 rounded ' + (pending? 'bg-amber-100 text-amber-700':'bg-green-100 text-green-700')
+        let pending = data.account?.pending
+        if(data.account?.calendar_id) pending = false
+        const hasCalendar = !!data.account?.calendar_id
+        const seenKey = 'google.calendar.selected.v1'
+        if(hasCalendar){
+          try { localStorage.setItem(seenKey, '1') } catch{}
+        }
+        const alreadySeen = (()=>{ try { return localStorage.getItem(seenKey)==='1' } catch{ return false } })()
+        if(pending && alreadySeen) pending = false
+        st.classList.remove('hidden');
+        if(pending){
+          st.textContent = 'Conectado (selecciona calendario)'
+          st.className='text-xs font-normal px-2 py-1 rounded bg-amber-100 text-amber-700'
+        } else {
+          st.textContent = 'Conectado con Google'
+          st.className='text-xs font-normal px-2 py-1 rounded bg-green-100 text-green-700'
+        }
         connectBtn?.classList.add('hidden')
         if(!pending){
           picker?.classList.remove('hidden')
@@ -54,20 +69,30 @@ import { authFetch, apiBase } from './auth.js'
   }
 
   async function startOAuth(challenge){
-    const r = await authFetch(apiBase + '/data/integrations/google/authurl?pkce_challenge='+encodeURIComponent(challenge))
+    const urlBase = apiBase + '/data/integrations/google/authurl'
+    const qs = challenge ? ('?pkce_challenge='+encodeURIComponent(challenge)) : ''
+    const r = await authFetch(urlBase + qs)
     if(!r.ok) throw new Error('authurl_failed')
     const j = await r.json(); return j.url
   }
 
   async function pkce(){
-    const rnd = crypto.getRandomValues(new Uint8Array(32))
-    const base64url = (arr)=> btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
-    const verifier = base64url(rnd)
-    const enc = new TextEncoder().encode(verifier)
-    const hash = await crypto.subtle.digest('SHA-256', enc)
-    const challenge = base64url(new Uint8Array(hash))
-    sessionStorage.setItem('google_pkce_verifier', verifier)
-    return challenge
+    try {
+      if(!window.crypto || !crypto.getRandomValues) return null
+      const rnd = crypto.getRandomValues(new Uint8Array(32))
+      const base64url = (arr)=> btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
+      const verifier = base64url(rnd)
+      if(!crypto.subtle || !crypto.subtle.digest){
+        // Sin SHA-256 disponible (contexto no seguro). Usar sin PKCE.
+        console.warn('[google][pkce] subtle.digest no disponible; continuando sin PKCE')
+        return null
+      }
+      const enc = new TextEncoder().encode(verifier)
+      const hash = await crypto.subtle.digest('SHA-256', enc)
+      const challenge = base64url(new Uint8Array(hash))
+      sessionStorage.setItem('google_pkce_verifier', verifier)
+      return challenge
+    } catch(e){ console.warn('[google][pkce] fallo; continuando sin PKCE', e); return null }
   }
 
   document.getElementById('google-cal-connect')?.addEventListener('click', async ()=>{
@@ -190,6 +215,13 @@ import { authFetch, apiBase } from './auth.js'
               const currentSpan = document.getElementById('google-cal-current')
               if(currentSpan) currentSpan.textContent = cal.summary || cal.id
               refreshGoogleStatus()
+              // Redirigir a calendario.html si no estamos ya allí
+              try {
+                const path = window.location.pathname
+                if(!/calendario\.html$/.test(path)){
+                  window.location.href = '/calendario.html'
+                }
+              } catch(_e){}
             } catch { dropdown.innerHTML = '<div class="p-2 text-red-600">Error</div>' }
           })
           dropdown.appendChild(item)

@@ -75,6 +75,7 @@ export async function refreshTokens(userId){
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = cfg()
   const acc = await getAccount(userId)
   if(!acc) return null
+  if(acc.needs_reauth) return null
   const body = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     client_secret: GOOGLE_CLIENT_SECRET,
@@ -82,19 +83,37 @@ export async function refreshTokens(userId){
     grant_type: 'refresh_token'
   })
   const r = await fetch(GOOGLE_TOKEN_URL, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body })
-  if(!r.ok){ console.error('[google] refresh fail', r.status); return null }
+  if(!r.ok){
+    let txt=''; try { txt = await r.text() } catch{}
+    console.error('[google] refresh fail', r.status, txt.slice(0,200))
+    if(r.status===400 || r.status===401){
+      try { await pool.query('alter table google_calendar_accounts add column if not exists needs_reauth boolean not null default false') } catch(_e){}
+      try { await pool.query('update google_calendar_accounts set needs_reauth=true, updated_at=now() where user_id=$1', [userId]) } catch(_e){}
+    }
+    return null
+  }
   const data = await r.json()
   const expiry = new Date(Date.now() + (data.expires_in||3600)*1000).toISOString()
-  await pool.query('update google_calendar_accounts set access_token=$2, token_type=$3, scope=coalesce($4,scope), expiry=$5, updated_at=now() where user_id=$1', [userId, data.access_token, data.token_type||'Bearer', data.scope||null, expiry])
+  const newRefresh = data.refresh_token || null
+  if(newRefresh){
+    await pool.query('update google_calendar_accounts set access_token=$2, token_type=$3, scope=coalesce($4,scope), expiry=$5, refresh_token=$6, needs_reauth=false, updated_at=now() where user_id=$1', [userId, data.access_token, data.token_type||'Bearer', data.scope||null, expiry, newRefresh])
+  } else {
+    await pool.query('update google_calendar_accounts set access_token=$2, token_type=$3, scope=coalesce($4,scope), expiry=$5, needs_reauth=false, updated_at=now() where user_id=$1', [userId, data.access_token, data.token_type||'Bearer', data.scope||null, expiry])
+  }
   return getAccount(userId)
 }
 
 export async function upsertAccount(userId, { access_token, refresh_token, token_type, scope, expires_in, calendar_id }){
+  try { await pool.query('alter table google_calendar_accounts add column if not exists needs_reauth boolean not null default false') } catch(_e){}
+  const prev = await getAccount(userId)
+  const finalRefresh = refresh_token || prev?.refresh_token || null
   const expiry = new Date(Date.now() + (expires_in||3600)*1000).toISOString()
-  await pool.query(`insert into google_calendar_accounts(user_id,access_token,refresh_token,token_type,scope,expiry,calendar_id)
-    values($1,$2,$3,$4,$5,$6,$7)
-    on conflict(user_id) do update set access_token=excluded.access_token,refresh_token=excluded.refresh_token,token_type=excluded.token_type,scope=excluded.scope,expiry=excluded.expiry,calendar_id=excluded.calendar_id,updated_at=now()`,
-    [userId, access_token, refresh_token, token_type||'Bearer', scope||null, expiry, calendar_id])
+  await pool.query(`insert into google_calendar_accounts(user_id,access_token,refresh_token,token_type,scope,expiry,calendar_id,needs_reauth)
+    values($1,$2,$3,$4,$5,$6,$7,false)
+    on conflict(user_id) do update set access_token=excluded.access_token,
+      refresh_token=coalesce(excluded.refresh_token, google_calendar_accounts.refresh_token),
+      token_type=excluded.token_type,scope=excluded.scope,expiry=excluded.expiry,calendar_id=excluded.calendar_id,needs_reauth=false,updated_at=now()`,
+    [userId, access_token, finalRefresh, token_type||'Bearer', scope||null, expiry, calendar_id])
 }
 
 export async function getAccount(userId){
@@ -105,8 +124,10 @@ export async function getAccount(userId){
 async function authHeader(userId){
   let acc = await getAccount(userId)
   if(!acc) throw new Error('no_google_account')
+  if(acc.needs_reauth) throw new Error('google_needs_reauth')
   if(Date.now() + 60000 > Date.parse(acc.expiry)){
-    acc = await refreshTokens(userId) || acc
+    const refreshed = await refreshTokens(userId)
+    if(refreshed) acc = refreshed
   }
   return { Authorization: `${acc.token_type||'Bearer'} ${acc.access_token}` }
 }
@@ -124,6 +145,20 @@ export async function listRemoteChanges(userId){
   if(r.status===410){ // sync token invalid -> full resync
     await pool.query('update google_calendar_accounts set sync_token=null where user_id=$1', [userId])
     return listRemoteChanges(userId)
+  }
+  if(r.status===401 || r.status===403){
+    // Intento único de refresh inmediato y retry
+    const refreshed = await refreshTokens(userId)
+    if(refreshed){
+      const retryHeaders = await authHeader(userId)
+      const r2 = await fetch(url, { headers: retryHeaders })
+      if(r2.status===410){
+        await pool.query('update google_calendar_accounts set sync_token=null where user_id=$1', [userId])
+        return listRemoteChanges(userId)
+      }
+      if(!r2.ok) throw new Error('google_list_failed')
+      return r2.json()
+    }
   }
   if(!r.ok) throw new Error('google_list_failed')
   return r.json()
@@ -292,8 +327,9 @@ export async function listCalendars(userId){
 
 export async function setCalendar(userId, calendar_id){
   const before = await getAccount(userId)
-  await pool.query('update google_calendar_accounts set calendar_id=$2, sync_token=null, updated_at=now() where user_id=$1', [userId, calendar_id])
-  if(!before?.calendar_id || before.calendar_id !== calendar_id){
+  const cleanId = (typeof calendar_id === 'string' && calendar_id.trim()) ? calendar_id.trim() : null
+  await pool.query('update google_calendar_accounts set calendar_id=$2, sync_token=null, updated_at=now() where user_id=$1', [userId, cleanId])
+  if(!before?.calendar_id || before.calendar_id !== cleanId){
     await applySync(userId).catch(e=> console.error('[google][sync] after setCalendar failed', e.message))
   }
   return getAccount(userId)

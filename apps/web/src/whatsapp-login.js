@@ -100,6 +100,12 @@ async function checkStatus() {
         showQR(null)
         await apiRequest('/data/whatsapp/start', { method: 'POST' })
         break
+      case 'UNAVAILABLE':
+        updateStatus('Servicio de WhatsApp no disponible. Arrancando...')
+        showQR(null)
+        // Intentar iniciar (puede disparar autospawn en backend)
+        try { await apiRequest('/data/whatsapp/start', { method: 'POST' }) } catch {}
+        break
         
       default:
         updateStatus(`Estado: ${status}`)

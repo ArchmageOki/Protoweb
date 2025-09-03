@@ -1,6 +1,25 @@
 import { Router } from 'express'
-import { requireAuth } from './middleware/auth.js'
 import { nanoid } from 'nanoid'
+import multer from 'multer'
+import fs from 'fs'
+import path from 'path'
+
+// ---- Config subida PDF consentimiento ----
+const CONSENTS_DIR = process.env.CONSENTS_DIR || path.resolve(process.cwd(), 'consents')
+try { fs.mkdirSync(CONSENTS_DIR, { recursive: true }) } catch(_e){}
+const consentStorage = multer.diskStorage({
+  destination: (_req,_file,cb)=> cb(null, CONSENTS_DIR),
+  filename: (req,file,cb)=> cb(null, `${req.user.id}-consentimiento_generico.pdf`)
+})
+const uploadConsent = multer({
+  storage: consentStorage,
+  fileFilter: (_req,file,cb)=> {
+    if(file.mimetype === 'application/pdf') return cb(null,true)
+    cb(new Error('invalid_mime'))
+  },
+  limits: { fileSize: 5*1024*1024 }
+})
+import { requireAuth } from './middleware/auth.js'
 import { 
   pgCreateClient, pgListClients, pgGetClient, pgUpdateClient, pgDeleteClient,
   pgCreateEvent, pgListEvents, pgGetEvent, pgUpdateEvent, pgDeleteEvent, pgCompleteEvent,
@@ -8,7 +27,9 @@ import {
   pgInsertWhatsappMessage, pgListWhatsappMessages,
   pgGetUserSettings, pgUpsertUserSettings,
   pgListCompletedEventsForClient,
-  pgRecalcClientCompletedStats
+  pgRecalcClientCompletedStats,
+  pgOutboxInsert, pgOutboxListPending, pgOutboxCancel, pgOutboxGet,
+  pgCreateClientCompletionToken
 } from './db/pg.js'
 import { buildAuthUrl, exchangeCode, upsertAccount, getAccount, applySync, createRemoteEvent, patchRemoteEvent, deleteRemoteEvent, validateAndConsumeState, createOauthState, listCalendars, setCalendar } from './integrations/googleCalendar.js'
 import { pool } from './db/pg.js'
@@ -124,10 +145,34 @@ r.post('/events', async (req,res)=>{
   else pAmt = null
   if(tAmt!=null && pAmt!=null && pAmt > tAmt) return res.status(400).json({ error:'paid_gt_total' })
   let finalClientId = null
+  let clientNeedsCompletion = false
+  let completionToken = null
   if(client_id){
     const c = await pgGetClient(req.user.id, client_id)
     if(!c) return res.status(400).json({ error:'invalid_client' })
     finalClientId = c.id
+    // Comprobar campos faltantes (excepto instagram opcional, mobile obligatorio ya existe)
+    const missing = []
+    const isEmpty = v => v === null || v === undefined || (typeof v === 'string' && !v.trim())
+    if(isEmpty(c.first_name)) missing.push('first_name')
+    if(isEmpty(c.last_name)) missing.push('last_name')
+    if(isEmpty(c.mobile)) missing.push('mobile') // debería existir siempre
+    if(isEmpty(c.dni)) missing.push('dni')
+    if(isEmpty(c.address)) missing.push('address')
+    if(isEmpty(c.postal_code)) missing.push('postal_code')
+    if(isEmpty(c.birth_date)) missing.push('birth_date')
+    console.log('[client-completion] Evaluación cliente', c.id, 'missing=', missing)
+    if(missing.length>0){
+      clientNeedsCompletion = true
+      const tokenId = nanoid()
+      await pgCreateClientCompletionToken(tokenId, req.user.id, c.id)
+      completionToken = tokenId
+      const base = process.env.PUBLIC_APP_ORIGIN || 'http://localhost:5173'
+      const urlDatos = `${base}/completar-datos.html?token=${tokenId}`
+      const urlConsent = `${base}/consentimiento-whatsapp.html?token=${tokenId}`
+      console.log('[client-completion] URL completar-datos:', urlDatos)
+      console.log('[client-completion] URL consentimiento:', urlConsent)
+    }
   }
   const row = await pgCreateEvent(nanoid(), req.user.id, { title: title.trim(), description, start_at: s.toISOString(), end_at: e.toISOString(), all_day: !!all_day, client_id: finalClientId, completed_design: !!completed_design, extra_check_1: !!extra_check_1, extra_check_2: !!extra_check_2, extra_check_3: !!extra_check_3, total_amount: tAmt, paid_amount: pAmt, notes, is_completed: !!is_completed })
   // Si hay cuenta Google, crear también remoto (async best-effort)
@@ -138,7 +183,7 @@ r.post('/events', async (req,res)=>{
       }).catch(err=> console.error('[google][create] fallo', err.message))
     }
   })
-  res.status(201).json({ ok:true, item: row })
+  res.status(201).json({ ok:true, item: row, client_completion: clientNeedsCompletion ? { token: completionToken, completar_url: `${process.env.PUBLIC_APP_ORIGIN||'http://localhost:5173'}/completar-datos.html?token=${completionToken}`, consentimiento_url: `${process.env.PUBLIC_APP_ORIGIN||'http://localhost:5173'}/consentimiento-whatsapp.html?token=${completionToken}` } : null })
 })
 
 r.get('/events/:id', async (req,res)=>{
@@ -218,7 +263,13 @@ r.delete('/events/:id', async (req,res)=>{
 // ---- GOOGLE CALENDAR AUTH ----
 r.get('/integrations/google/status', async (req,res)=>{
   const acc = await getAccount(req.user.id)
-  res.json({ ok:true, connected: !!acc, account: acc ? { calendar_id: acc.calendar_id, expiry: acc.expiry, last_sync_at: acc.last_sync_at, scope: acc.scope, pending: !acc.calendar_id } : null })
+  if(acc && typeof acc.calendar_id === 'string' && !acc.calendar_id.trim()){
+    // Normalizar valores vacíos a null si quedaron así por migraciones
+    try { await pool.query('update google_calendar_accounts set calendar_id=null where user_id=$1 and (calendar_id=$2 or calendar_id=\'\')', [req.user.id, acc.calendar_id]) } catch(_e){}
+    acc.calendar_id = null
+  }
+  const pending = acc ? (acc.calendar_id == null) : false
+  res.json({ ok:true, connected: !!acc, account: acc ? { calendar_id: acc.calendar_id, expiry: acc.expiry, last_sync_at: acc.last_sync_at, scope: acc.scope, pending, needs_reauth: !!acc.needs_reauth } : null })
 })
 
 r.get('/integrations/google/authurl', (req,res)=>{
@@ -312,32 +363,53 @@ r.get('/whatsapp/session', async (req,res)=>{
 import fetch from 'node-fetch'
 // Auto-spawn opcional del microservicio de WhatsApp si no está levantado.
 import { spawn } from 'child_process'
-import path from 'path'
 import { fileURLToPath } from 'url'
 const WHATSAPP_SERVICE_BASE = process.env.WHATSAPP_SERVICE_BASE || 'http://localhost:4001'
 let waProcess = null
 let waProcessStarting = false
-function ensureWhatsappServiceSpawn(){
-  // Activar siempre en no-producción salvo desactivación explícita
+let waNextSpawnAttempt = 0
+async function ensureWhatsappServiceSpawn(){
+  // Desactivado explícitamente
   if(process.env.WHATSAPP_AUTO_SPAWN === 'false') return
+  // En producción sólo si se autoriza
   if(process.env.NODE_ENV === 'production' && process.env.WHATSAPP_AUTO_SPAWN !== 'true') return
+  // Ya hay proceso controlado
   if(waProcess || waProcessStarting) return
+  // Backoff
+  if(Date.now() < waNextSpawnAttempt) return
+  // Comprobar si el servicio ya está arriba externamente
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(()=>ctrl.abort(), 1500)
+    const r = await fetch(WHATSAPP_SERVICE_BASE + '/health', { signal: ctrl.signal })
+    clearTimeout(t)
+    if(r.ok){
+      // Servicio ya disponible; no spawnear
+      return
+    }
+  } catch(_ignored){ /* ignorar y continuar con spawn */ }
   waProcessStarting = true
   try {
     const __filename = fileURLToPath(import.meta.url)
     const __dirname = path.dirname(__filename)
-    // Ir a raíz del repo: ../../.. desde services/api/src -> services
     const repoRoot = path.resolve(__dirname, '../../..')
     const waDir = path.join(repoRoot, 'services', 'whatsapp')
-    waProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run','dev'], { cwd: waDir, stdio:'inherit', env: process.env })
+    const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    waProcess = spawn(cmd, ['run','dev'], { cwd: waDir, stdio:'inherit', env: process.env })
     waProcess.on('exit', (code,signal)=>{ waProcess=null; console.log('[whatsapp][autospawn] proceso terminado', code, signal) })
     console.log('[whatsapp][autospawn] lanzado en', waDir)
-  } catch(e){ console.error('[whatsapp][autospawn] fallo al lanzar', e.message) }
+  } catch(e){ 
+    console.error('[whatsapp][autospawn] fallo al lanzar', e.code || '', e.message)
+    // Backoff si falla
+    waNextSpawnAttempt = Date.now() + 10000
+  }
   finally { waProcessStarting = false }
 }
 // ---- WHATSAPP PROXIES ----
 r.get('/whatsapp/status', async (req,res)=>{
   try {
+  // Asegurar que el microservicio esté arrancado
+  await ensureWhatsappServiceSpawn()
     const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/status', { 
       headers:{ 'Authorization':'Bearer '+req.accessToken } 
     })
@@ -350,6 +422,7 @@ r.get('/whatsapp/status', async (req,res)=>{
 
 r.post('/whatsapp/start', async (req,res)=>{
   try {
+  await ensureWhatsappServiceSpawn()
     const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/start', { 
       method:'POST', 
       headers:{ 'Authorization':'Bearer '+req.accessToken } 
@@ -363,6 +436,7 @@ r.post('/whatsapp/start', async (req,res)=>{
 
 r.post('/whatsapp/reset', async (req,res)=>{
   try {
+  await ensureWhatsappServiceSpawn()
     const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/reset', { 
       method:'POST', 
       headers:{ 'Authorization':'Bearer '+req.accessToken } 
@@ -376,6 +450,7 @@ r.post('/whatsapp/reset', async (req,res)=>{
 
 r.post('/whatsapp/send', async (req,res)=>{
   try {
+  await ensureWhatsappServiceSpawn()
     const r2 = await fetch(WHATSAPP_SERVICE_BASE + '/whatsapp/send', { 
       method:'POST', 
       headers:{ 'Authorization':'Bearer '+req.accessToken, 'Content-Type':'application/json' }, 
@@ -413,6 +488,45 @@ r.get('/whatsapp/messages', async (req,res)=>{
   }
 })
 
+// ---- WHATSAPP OUTBOX (cola programada) ----
+r.get('/whatsapp/outbox', async (req,res)=>{
+  try {
+    const rows = await pgOutboxListPending(req.user.id)
+    res.json({ ok:true, items: rows })
+  } catch(e){
+    console.error('[whatsapp][outbox][list] error', e.message)
+    res.status(500).json({ error:'list_failed' })
+  }
+})
+r.post('/whatsapp/outbox', async (req,res)=>{
+  const { client_id=null, phone, client_name=null, instagram=null, message_text, scheduled_at } = req.body||{}
+  if(!phone || typeof phone !== 'string') return res.status(400).json({ error:'invalid_phone' })
+  if(!message_text || typeof message_text !== 'string') return res.status(400).json({ error:'invalid_message' })
+  let sched = scheduled_at ? new Date(scheduled_at) : null
+  if(!sched || isNaN(sched)) return res.status(400).json({ error:'invalid_scheduled_at' })
+  try {
+    const row = await pgOutboxInsert(nanoid(), req.user.id, { client_id, phone: phone.replace(/[^0-9+]/g,''), client_name, instagram, message_text: message_text.slice(0,5000), scheduled_at: sched.toISOString() })
+    res.status(201).json({ ok:true, item: row })
+  } catch(e){
+    console.error('[whatsapp][outbox][create] error', e.message)
+    res.status(500).json({ error:'create_failed' })
+  }
+})
+r.post('/whatsapp/outbox/:id/cancel', async (req,res)=>{
+  try {
+    const row = await pgOutboxCancel(req.params.id, req.user.id)
+    if(!row) return res.status(404).json({ error:'not_found_or_not_cancellable' })
+    res.json({ ok:true, item: row })
+  } catch(e){
+    res.status(500).json({ error:'cancel_failed' })
+  }
+})
+r.get('/whatsapp/outbox/:id', async (req,res)=>{
+  const row = await pgOutboxGet(req.params.id, req.user.id)
+  if(!row) return res.status(404).json({ error:'not_found' })
+  res.json({ ok:true, item: row })
+})
+
 // Historial de mensajes para la interfaz (alias a /whatsapp/messages)
 r.get('/whatsapp/history', async (req,res)=>{
   try {
@@ -442,19 +556,118 @@ r.post('/whatsapp/messages', async (req,res)=>{
 // ---- USER SETTINGS ----
 r.get('/settings', async (req,res)=>{
   const row = await pgGetUserSettings(req.user.id)
-  if(!row) return res.json({ ok:true, settings: { extra_checks:{}, clientes:{} } })
-  res.json({ ok:true, settings: { extra_checks: row.extra_checks || {}, clientes: row.clientes || {} } })
+  if(!row) return res.json({ ok:true, settings: { extra_checks:{}, clientes:{}, auto_title_config:{}, auto_title_enabled:true, business_needs_consent:false } })
+  const consent_fixed_elements = Array.isArray(row.consent_fixed_elements) ? row.consent_fixed_elements : []
+  const consent_signature_rect = (row.consent_signature_rect && typeof row.consent_signature_rect==='object' && !Array.isArray(row.consent_signature_rect)) ? row.consent_signature_rect : {}
+  res.json({ ok:true, settings: {
+    extra_checks: row.extra_checks || {},
+    clientes: row.clientes || {},
+    auto_title_config: row.auto_title_config || {},
+    auto_title_enabled: typeof row.auto_title_enabled === 'boolean' ? row.auto_title_enabled : true,
+    business_needs_consent: !!row.business_needs_consent,
+    consent_pdf_info: row.consent_pdf_info || {},
+  consent_field_map: row.consent_field_map || {},
+    consent_fixed_elements,
+    consent_signature: row.consent_signature || null,
+    consent_signature_rect
+  } })
 })
 r.put('/settings', async (req,res)=>{
   const body = req.body||{}
-  const { extra_checks={}, clientes={} } = body
   try {
-    const saved = await pgUpsertUserSettings(req.user.id, { extra_checks, clientes })
-    res.json({ ok:true, settings: { extra_checks: saved.extra_checks, clientes: saved.clientes } })
+    const existing = await pgGetUserSettings(req.user.id)
+    const extra_checks = body.hasOwnProperty('extra_checks') ? (body.extra_checks||{}) : (existing?.extra_checks || {})
+    const clientes = body.hasOwnProperty('clientes') ? (body.clientes||{}) : (existing?.clientes || {})
+    const auto_title_config = body.hasOwnProperty('auto_title_config') ? (body.auto_title_config||{}) : (existing?.auto_title_config || {})
+    const auto_title_enabled = body.hasOwnProperty('auto_title_enabled') ? !!body.auto_title_enabled : (typeof existing?.auto_title_enabled === 'boolean' ? existing.auto_title_enabled : true)
+    const business_needs_consent = body.hasOwnProperty('business_needs_consent') ? !!body.business_needs_consent : (existing?.business_needs_consent || false)
+    const consent_pdf_info = body.hasOwnProperty('consent_pdf_info') ? (body.consent_pdf_info||{}) : (existing?.consent_pdf_info || {})
+    const consent_field_map = body.hasOwnProperty('consent_field_map') ? (body.consent_field_map||{}) : (existing?.consent_field_map || {})
+    let consent_fixed_elements_raw = body.hasOwnProperty('consent_fixed_elements') ? (body.consent_fixed_elements??[]) : (existing?.consent_fixed_elements || [])
+    // Si llega como string intentar parsear
+    if(typeof consent_fixed_elements_raw === 'string'){
+      try { const parsed = JSON.parse(consent_fixed_elements_raw); if(Array.isArray(parsed)) consent_fixed_elements_raw = parsed } catch(_e) { consent_fixed_elements_raw = [] }
+    }
+    // Si llega como objeto {id:{...}} convertir a array
+    if(!Array.isArray(consent_fixed_elements_raw) && consent_fixed_elements_raw && typeof consent_fixed_elements_raw==='object'){
+      consent_fixed_elements_raw = Object.values(consent_fixed_elements_raw)
+    }
+    // Parsear elementos que sean string individual
+    if(Array.isArray(consent_fixed_elements_raw)){
+      consent_fixed_elements_raw = consent_fixed_elements_raw.map(el=>{
+        if(typeof el === 'string'){
+          try { const p = JSON.parse(el); return p } catch(_e){ return null }
+        }
+        return el
+      }).filter(Boolean)
+    }
+    const consent_signature = body.hasOwnProperty('consent_signature') ? (body.consent_signature||null) : (existing?.consent_signature || null)
+    const consent_signature_rect_raw = body.hasOwnProperty('consent_signature_rect') ? (body.consent_signature_rect||{}) : (existing?.consent_signature_rect || {})
+  const consent_fixed_elements = Array.isArray(consent_fixed_elements_raw) ? consent_fixed_elements_raw.filter(el=> el && typeof el==='object').map(el=>({
+      id: typeof el.id==='string'? el.id : ('f_'+Math.random().toString(36).slice(2,8)),
+      text: typeof el.text==='string'? el.text.slice(0,500):'',
+      x: (typeof el.x==='number' && isFinite(el.x))? el.x : null,
+      y: (typeof el.y==='number' && isFinite(el.y))? el.y : null,
+      fontSize: (typeof el.fontSize==='number' && isFinite(el.fontSize))? el.fontSize : 12
+  ,page: 1
+    })) : []
+  // Log de depuración (se puede quitar después)
+  // Log eliminado: fixed_elements_sanitized_count
+    let consent_signature_rect = (consent_signature_rect_raw && typeof consent_signature_rect_raw==='object' && !Array.isArray(consent_signature_rect_raw))? { ...consent_signature_rect_raw }: {}
+    if(consent_signature_rect.x!=null){
+      ['x','y','w','h','ratio'].forEach(k=>{ if(typeof consent_signature_rect[k] !== 'number' || !isFinite(consent_signature_rect[k])) delete consent_signature_rect[k] })
+      consent_signature_rect.page=1
+    }
+    const saved = await pgUpsertUserSettings(req.user.id, { extra_checks, clientes, auto_title_config, auto_title_enabled, business_needs_consent, consent_pdf_info, consent_field_map, consent_fixed_elements, consent_signature, consent_signature_rect })
+    res.json({ ok:true, settings: {
+      extra_checks: saved.extra_checks,
+      clientes: saved.clientes,
+      auto_title_config: saved.auto_title_config,
+      auto_title_enabled: saved.auto_title_enabled,
+      business_needs_consent: saved.business_needs_consent,
+      consent_pdf_info: saved.consent_pdf_info || {},
+      consent_field_map: saved.consent_field_map || {},
+      consent_fixed_elements: Array.isArray(saved.consent_fixed_elements)? saved.consent_fixed_elements: [],
+      consent_signature: saved.consent_signature || null,
+      consent_signature_rect: (saved.consent_signature_rect && typeof saved.consent_signature_rect==='object' && !Array.isArray(saved.consent_signature_rect)) ? saved.consent_signature_rect : {}
+    } })
   } catch(e){
-    console.error('[settings][put] error', e.message)
+    console.error('[settings][put] error', e)
     res.status(400).json({ error:'save_failed' })
   }
+})
+
+// Subir plantilla PDF consentimiento
+r.post('/settings/consent-pdf', uploadConsent.single('file'), async (req,res)=>{
+  try {
+    if(!req.file) return res.status(400).json({ error:'missing_file' })
+    const stat = fs.statSync(req.file.path)
+    const existing = await pgGetUserSettings(req.user.id)
+    const consent_pdf_info = { filename: path.basename(req.file.filename), size: stat.size, mime: req.file.mimetype, uploaded_at: new Date().toISOString() }
+    const consent_field_map = existing?.consent_field_map || {}
+    const extra_checks = existing?.extra_checks || {}
+    const clientes = existing?.clientes || {}
+    const auto_title_config = existing?.auto_title_config || {}
+    const auto_title_enabled = typeof existing?.auto_title_enabled === 'boolean' ? existing.auto_title_enabled : true
+    const business_needs_consent = !!existing?.business_needs_consent
+    const saved = await pgUpsertUserSettings(req.user.id, { extra_checks, clientes, auto_title_config, auto_title_enabled, business_needs_consent, consent_pdf_info, consent_field_map })
+    res.json({ ok:true, consent_pdf_info: saved.consent_pdf_info })
+  } catch(e){
+    console.error('[settings][consent-pdf][upload] error', e.message)
+    res.status(400).json({ error:'upload_failed', detail: e.message })
+  }
+})
+// Descargar plantilla PDF (si existe)
+r.get('/settings/consent-pdf', async (req,res)=>{
+  try {
+    const existing = await pgGetUserSettings(req.user.id)
+    const fname = existing?.consent_pdf_info?.filename
+    if(!fname) return res.status(404).json({ error:'not_found' })
+    const full = path.join(CONSENTS_DIR, fname)
+    if(!fs.existsSync(full)) return res.status(404).json({ error:'not_found' })
+    res.setHeader('Content-Type','application/pdf')
+    res.sendFile(full)
+  } catch(e){ res.status(400).json({ error:'fetch_failed' }) }
 })
 
 export default r

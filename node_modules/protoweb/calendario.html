@@ -51,9 +51,15 @@
             </div>
             <!-- Formulario (1/3) -->
             <div id="event-form-panel" class="rounded-lg border border-slate-200 bg-white p-4 lg:w-1/3 self-start">
-              <div class="flex items-center justify-between gap-2">
+              <div class="flex items-start justify-between gap-2">
                 <h2 id="event-form-title" class="font-semibold">Nuevo evento</h2>
-                <span id="event-finished-badge" class="hidden text-[11px] font-medium px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">Evento finalizado</span>
+                <div class="flex items-center gap-2">
+                  <span id="event-finished-badge" class="hidden text-[11px] font-medium px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-300">Evento finalizado</span>
+                  <button id="evt-complete" type="button" class="hidden inline-flex items-center gap-2 rounded-md border border-green-300 text-green-700 px-3 py-1.5 text-xs hover:bg-green-50" title="Marcar evento como finalizado">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>
+                    <span>Finalizar</span>
+                  </button>
+                </div>
               </div>
               <form class="mt-4 space-y-4" aria-label="Formulario crear evento (visual)">
                 <div class="grid gap-1">
@@ -203,10 +209,6 @@
                       <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.74 9l-.346 9m-4.788 0L9.26 9M9.75 4.5h4.5m-8.25 2.25h12M5.25 6.75 6 19.125A2.25 2.25 0 0 0 8.243 21h7.514A2.25 2.25 0 0 0 18 19.125L18.75 6.75"/></svg>
                       <span>Eliminar</span>
                     </button>
-                    <button id="evt-complete" type="button" class="hidden ml-auto inline-flex items-center gap-2 rounded-md border border-green-300 text-green-700 px-4 py-2 text-sm hover:bg-green-50" title="Marcar evento como finalizado">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>
-                      <span>Finalizar evento</span>
-                    </button>
                   </div>
                 </div>
               </form>
@@ -235,184 +237,20 @@
   <script type="module" src="/src/month.js"></script>
   <script type="module" src="/src/user-menu.js"></script>
   <script type="module" src="/src/google-calendar-ui.js"></script>
-  <script type="module">
-    import { authFetch, apiBase } from '/src/auth.js'
-    (function(){
-      if(!location.search.includes('google_auth=1')) return
-      // Mostrar modal de selección de calendario sólo si el usuario acaba de autenticar y aún no tiene calendar_id escogido diferente de primary
-      const modal = document.createElement('div')
-      modal.id='calendar-pick-once-modal'
-      modal.className='fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'
-      modal.innerHTML = `
-        <div class="bg-white rounded-md shadow-lg max-w-md w-full p-5 space-y-4">
-          <h3 class="text-sm font-semibold">Selecciona un calendario</h3>
-          <p class="text-xs text-slate-600 leading-relaxed">Elige en qué calendario de tu cuenta de Google se crearán los eventos. Puedes cambiarlo más tarde en Ajustes.</p>
-          <div id="first-cal-list" class="border border-slate-200 rounded max-h-60 overflow-auto divide-y divide-slate-100"></div>
-          <div class="flex justify-end gap-2 pt-2 text-[11px] text-slate-500">
-            Debes seleccionar un calendario para comenzar.
-          </div>
-        </div>`
-      document.body.appendChild(modal)
-      const listBox = modal.querySelector('#first-cal-list')
-  const skipBtn = null
-      async function load(){
-        listBox.innerHTML = '<div class="p-3 text-xs text-slate-500">Cargando calendarios…</div>'
-        try {
-          const r = await authFetch(apiBase + '/data/integrations/google/calendars')
-          if(!r.ok) throw new Error()
-          const j = await r.json()
-          listBox.innerHTML = ''
-          j.items.forEach(cal => {
-            const btn = document.createElement('button')
-            btn.type='button'
-            btn.className='w-full text-left px-3 py-2 text-xs hover:bg-slate-100 flex items-center gap-2'
-            btn.innerHTML = `<span class="flex-1 truncate">${cal.summary||cal.id}</span>${cal.primary?'<span class="text-[10px] px-1 rounded bg-indigo-100 text-indigo-700">primario</span>':''}`
-            btn.addEventListener('click', async ()=>{
-              btn.disabled=true
-              btn.textContent='Guardando…'
-              try {
-                const r2 = await authFetch(apiBase + '/data/integrations/google/calendar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ calendar_id: cal.id }) })
-                if(!r2.ok) throw new Error()
-                close(); location.reload()
-              } catch { btn.textContent='Error'; setTimeout(()=> load(), 1200) }
-            })
-            listBox.appendChild(btn)
-          })
-        } catch { listBox.innerHTML = '<div class="p-3 text-xs text-red-600">Error cargando calendarios.</div>' }
-      }
-      function close(){ modal.remove(); const url = new URL(location.href); url.searchParams.delete('google_auth'); history.replaceState(null,'',url.toString()) }
-  // sin botón de omitir
-      load()
-    })()
-  </script>
-    <script>
-      (function(){
-        // Hacer que toda la barra de fecha sea táctil (wrapper clicable)
-        const dateInput = document.getElementById('evt-fecha');
-        const dateWrapper = document.querySelector('[data-date-wrapper]');
-        if(dateInput && dateWrapper){
-          dateWrapper.addEventListener('click', (e)=>{
-            // Evitar doble apertura si el click es directamente en el input (nativo ya abre)
-            if(e.target !== dateInput){
-              if(typeof dateInput.showPicker === 'function'){
-                try { dateInput.showPicker(); return; } catch {}
-              }
-              dateInput.focus();
-              try { dateInput.click(); } catch {}
-            }
-          }, { passive:true });
-        }
-  // ACTIVE no puede contener espacios para classList.toggle con segundo argumento.
-  const ACTIVE_BG = 'bg-slate-900';
-  const ACTIVE_TEXT = 'text-white';
-        function buildHours(list){
-          if(list.children.length) return;
-          for(let h=0; h<24; h++){
-            const li=document.createElement('li');
-            const v=String(h).padStart(2,'0');
-            li.textContent=v; li.dataset.hour=v;
-            li.className='cursor-pointer rounded px-2 py-1 hover:bg-slate-100';
-            list.appendChild(li);
-          }
-        }
-        function positionPopover(id){
-          const btn = document.querySelector(`[data-time-display="${id}"]`);
-          const pop = document.querySelector(`[data-time-popover="${id}"]`);
-          if(!btn || !pop) return;
-          const container = btn.parentElement; // wrapper relativo
-          const targetWidth = container ? container.offsetWidth : btn.offsetWidth;
-          // Igualar ancho visual
-          pop.style.width = targetWidth + 'px';
-          pop.style.minWidth = targetWidth + 'px';
-          // Posicionar justo debajo del botón
-          pop.style.top = btn.offsetHeight + 'px';
-          pop.style.left = '0px';
-        }
-        function openPopover(id){
-          closeAll();
-          const pop=document.querySelector(`[data-time-popover="${id}"]`);
-          if(pop){
-            pop.classList.remove('hidden');
-            markActive(id);
-            positionPopover(id);
-            // Scroll automático a la hora por defecto (10 inicio / 11 fin) o la seleccionada
-            try {
-              const hourList = pop.querySelector('.time-hours');
-              const hidden = document.getElementById(id);
-              let hSel = hidden?.value?.split(':')[0];
-              if(!hSel){ hSel = id==='evt-inicio' ? '10' : '11'; }
-              const target = hourList?.querySelector(`[data-hour="${hSel}"]`);
-              if(target && hourList){
-                hourList.scrollTop = target.offsetTop - 8;
-              }
-            } catch {}
-          }
-        }
-        function closeAll(){ document.querySelectorAll('.time-popover').forEach(p=>p.classList.add('hidden')); }
-        function markActive(id){
-          const hidden=document.getElementById(id); if(!hidden) return;
-            const [h,m]=hidden.value.split(':');
-            const pop=document.querySelector(`[data-time-popover="${id}"]`);
-            if(!pop) return;
-            pop.querySelectorAll('.time-hours [data-hour]').forEach(li=> {
-              const on = li.dataset.hour===h;
-              li.classList.toggle(ACTIVE_BG, on);
-              li.classList.toggle(ACTIVE_TEXT, on);
-            });
-            pop.querySelectorAll('.time-minutes [data-minute]').forEach(li=> {
-              const on = li.dataset.minute===m;
-              li.classList.toggle(ACTIVE_BG, on);
-              li.classList.toggle(ACTIVE_TEXT, on);
-            });
-        }
-        function setTime(id,hour,minute,doClose){
-          const hidden=document.getElementById(id); if(!hidden) return;
-          hidden.value=`${hour}:${minute}`;
-          const label=document.querySelector(`[data-time-display="${id}"] .time-value`);
-          if(label) label.textContent=hidden.value;
-          markActive(id);
-          if(doClose) closeAll();
-        }
-        document.querySelectorAll('.time-hours').forEach(buildHours);
-        document.querySelectorAll('[data-time-display]').forEach(btn=>{
-          btn.addEventListener('click',e=>{ e.stopPropagation(); openPopover(btn.getAttribute('data-time-display')); });
-        });
-        document.addEventListener('click',e=>{
-          const hourEl=e.target.closest('.time-hours [data-hour]');
-          const minEl=e.target.closest('.time-minutes [data-minute]');
-          if(hourEl){
-            const pop=hourEl.closest('[data-time-popover]'); const id=pop.getAttribute('data-time-popover');
-            const hidden=document.getElementById(id); const [,m]=hidden.value.split(':');
-            setTime(id,hourEl.dataset.hour,m,false);
-            positionPopover(id);
-          }
-          if(minEl){
-            const pop=minEl.closest('[data-time-popover]'); const id=pop.getAttribute('data-time-popover');
-            const hidden=document.getElementById(id); const [h]=hidden.value.split(':');
-            setTime(id,h,minEl.dataset.minute,true);
-          }
-          if(e.target.matches('[data-action="close"]')) closeAll();
-        });
-        document.addEventListener('click', e=>{ if(!e.target.closest('.time-popover') && !e.target.closest('[data-time-display]')) closeAll(); });
-        ['evt-inicio','evt-fin'].forEach(markActive);
-        // Recalcular tamaño/posición en scroll y resize
-        function syncOpen(){ document.querySelectorAll('.time-popover:not(.hidden)').forEach(p=>{ positionPopover(p.getAttribute('data-time-popover')); }); }
-        window.addEventListener('resize', syncOpen);
-        window.addEventListener('scroll', syncOpen, true);
-      })();
-    </script>
-  </body>
-    <!-- Modal confirmación eliminación evento -->
-    <div id="event-delete-confirm" class="hidden fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
-      <div class="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-5 border border-slate-200 animate-fade-in">
-        <h3 class="text-sm font-semibold mb-2">Confirmar eliminación</h3>
-        <p class="text-xs text-slate-600 mb-4">¿Seguro que quieres eliminar <span id="event-delete-title" class="font-medium"></span>? Esta acción no se puede deshacer.</p>
-        <div class="flex justify-end gap-2 text-xs">
-          <button type="button" id="event-delete-cancel" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100">Cancelar</button>
-          <button type="button" id="event-delete-confirm-btn" class="px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-60">Borrar</button>
-        </div>
+  <script type="module" src="/src/calendario-modal.js"></script>
+  <script src="/src/calendario-time-picker.js"></script>
+</body>
+
+  <!-- Modal confirmación eliminación evento -->
+  <div id="event-delete-confirm" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-5 border border-slate-200 animate-fade-in">
+      <h3 class="text-sm font-semibold mb-2">Confirmar eliminación</h3>
+      <p class="text-xs text-slate-600 mb-4">¿Seguro que quieres eliminar <span id="event-delete-title" class="font-medium"></span>? Esta acción no se puede deshacer.</p>
+      <div class="flex justify-end gap-2 text-xs">
+        <button type="button" id="event-delete-cancel" class="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100">Cancelar</button>
+        <button type="button" id="event-delete-confirm-btn" class="px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-500 disabled:opacity-60">Borrar</button>
       </div>
     </div>
-  </html>
+  </div>
 </html>

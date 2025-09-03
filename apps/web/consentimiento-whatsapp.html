@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <link rel="stylesheet" href="/src/style.css" />
+  <title>Consentimiento WhatsApp</title>
+</head>
+<body class="bg-gray-50 text-slate-800 min-h-screen flex flex-col">
+  <main class="flex-1 flex items-center justify-center p-6">
+  <div class="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h1 class="text-lg font-semibold mb-4">Consentimiento de comunicaciones</h1>
+      <p class="text-sm text-slate-600 mb-4">Puedes autorizar que te enviemos avisos relacionados con tus citas (recordatorios, cambios de horario, estado de la reserva) a través de WhatsApp. Esta autorización es opcional y puedes retirarla en cualquier momento solicitándolo.</p>
+
+      <form id="wa-consent-form" class="space-y-6" novalidate>
+        <div class="flex items-start gap-3">
+          <input id="wa-consent" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400" />
+          <label for="wa-consent" class="text-sm leading-relaxed select-none">
+            Acepto recibir futuras comunicaciones informativas sobre el estado de mis citas y recordatorios vía WhatsApp.
+          </label>
+        </div>
+        <div class="flex justify-between gap-3 pt-2">
+          <button type="button" id="btn-back" class="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100">Atrás</button>
+          <button type="button" id="btn-finish" class="px-4 py-2 text-sm rounded-md bg-slate-900 text-white hover:bg-slate-800">Finalizar</button>
+        </div>
+      </form>
+      <p id="consent-msg" class="mt-4 text-[11px] text-slate-500"></p>
+    </div>
+  </main>
+
+  <script type="module">
+  const API_BASE = `http://${location.hostname}:4002`
+    // Placeholder: en el futuro leeremos un token/ID para asociar este consentimiento a un cliente.
+    const consent = document.getElementById('wa-consent');
+    const back = document.getElementById('btn-back');
+    const finish = document.getElementById('btn-finish');
+    const msg = document.getElementById('consent-msg');
+
+    back.addEventListener('click', () => {
+      window.history.length > 1 ? window.history.back() : window.location.href = '/completar-datos.html';
+    });
+
+    const params = new URLSearchParams(location.search)
+    const token = params.get('token')
+    finish.addEventListener('click', async () => {
+      if(!token){ window.location.replace('/404.html?reason=missing-token'); return }
+      finish.disabled = true
+      finish.textContent = 'Procesando...'
+      try {
+  const res = await fetch(API_BASE + `/public/client-completion/${encodeURIComponent(token)}/consent`, {
+          method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ whatsapp_consent: consent.checked })
+        })
+        if(!res.ok){ window.location.replace('/404.html?reason=token'); return }
+  finish.textContent = 'Finalizado'
+  msg.textContent = consent.checked ? 'Has aceptado recibir comunicaciones.' : 'Has decidido no recibir comunicaciones.'
+  setTimeout(()=>{ window.location.href = '/finalizado.html' }, 800)
+      } catch(e){
+        finish.disabled = false
+        finish.textContent = 'Finalizar'
+        msg.textContent = 'Error de red intentando guardar consentimiento'
+      }
+    })
+  </script>
+</body>
+</html>
