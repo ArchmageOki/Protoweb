@@ -29,38 +29,6 @@
     </div>
   </main>
 
-  <script type="module">
-  const API_BASE = `http://${location.hostname}:4002`
-    // Placeholder: en el futuro leeremos un token/ID para asociar este consentimiento a un cliente.
-    const consent = document.getElementById('wa-consent');
-    const back = document.getElementById('btn-back');
-    const finish = document.getElementById('btn-finish');
-    const msg = document.getElementById('consent-msg');
-
-    back.addEventListener('click', () => {
-      window.history.length > 1 ? window.history.back() : window.location.href = '/completar-datos.html';
-    });
-
-    const params = new URLSearchParams(location.search)
-    const token = params.get('token')
-    finish.addEventListener('click', async () => {
-      if(!token){ window.location.replace('/404.html?reason=missing-token'); return }
-      finish.disabled = true
-      finish.textContent = 'Procesando...'
-      try {
-  const res = await fetch(API_BASE + `/public/client-completion/${encodeURIComponent(token)}/consent`, {
-          method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ whatsapp_consent: consent.checked })
-        })
-        if(!res.ok){ window.location.replace('/404.html?reason=token'); return }
-  finish.textContent = 'Finalizado'
-  msg.textContent = consent.checked ? 'Has aceptado recibir comunicaciones.' : 'Has decidido no recibir comunicaciones.'
-  setTimeout(()=>{ window.location.href = '/finalizado.html' }, 800)
-      } catch(e){
-        finish.disabled = false
-        finish.textContent = 'Finalizar'
-        msg.textContent = 'Error de red intentando guardar consentimiento'
-      }
-    })
-  </script>
+  <script type="module" src="/src/consentimiento-whatsapp.js"></script>
 </body>
 </html>

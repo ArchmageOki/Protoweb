@@ -1,0 +1,2000 @@
+import { apiBase, authFetch } from "/src/auth.js";
+const consentChk = document.getElementById("inp-business-consent");
+const consentConfig = document.getElementById("consent-config");
+const pdfInput = document.getElementById("pdf-file");
+const uploadBtn = document.getElementById("btn-upload");
+const pdfStatus = document.getElementById("pdf-status");
+const pdfDownload = document.getElementById("pdf-download");
+const pdfCanvas = document.getElementById("pdf-canvas");
+const fieldSelect = document.getElementById("field-select");
+const fieldList = document.getElementById("field-list");
+const fieldLayer = document.getElementById("field-layer");
+const mapStatus = document.getElementById("map-status");
+// Firma
+let signatureData = null; // base64 PNG
+let drawing = false;
+let signatureDirty = false;
+let signaturePlacement = null; // {page:1,x,y,w,h,ratio}
+let signaturePlacementMode = false;
+let signatureImageRatio = 0; // alto/ancho original
+let signaturePlacementDirty = false;
+let consentFieldMap = {};
+let fixedElements = [];
+let fixedSelection = null;
+let fixedPlacementMode = false; // true cuando el elemento fijo seleccionado está listo para colocarse
+let editingFixedId = null; // id del elemento fijo que se está editando
+let pdfLoaded = false;
+let pdfPageViewport = null;
+let dragState = null; // { field, startX, startY, curX, curY }
+let selectionEl = null;
+// Snapping
+let snapGuidesY = []; // baselines de texto
+let snapUnderlineY = []; // líneas compuestas por '_'
+let snapGuidesX = []; // inicios de texto para snap horizontal
+let showGuides = false;
+let globalFontDefault = 12;
+let lastPdfContainerWidth = null;
+// Cambio de plantilla
+let autoUploadOnSelect = false;
+let pendingTemplateChange = false;
+// ---- Autoguardado (debounce) ----
+const autoSaveTimers = { map: null, fixed: null, signature: null };
+const autoSaving = { map: false, fixed: false, signature: false };
+function scheduleAutoSaveMap() {
+  if (autoSaveTimers.map) clearTimeout(autoSaveTimers.map);
+  if (mapStatus) mapStatus.textContent = "Autoguardando...";
+  autoSaveTimers.map = setTimeout(doAutoSaveMap, 700);
+}
+async function doAutoSaveMap() {
+  if (autoSaving.map) {
+    scheduleAutoSaveMap();
+    return;
+  }
+  autoSaving.map = true;
+  try {
+    const r = await authFetch(apiBase + "/data/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ consent_field_map: consentFieldMap }),
+    });
+    if (r.ok) {
+      if (mapStatus) {
+        mapStatus.textContent = "Guardado";
+        setTimeout(() => {
+          if (mapStatus.textContent === "Guardado") mapStatus.textContent = "";
+        }, 1200);
+      }
+    } else {
+      if (mapStatus) mapStatus.textContent = "Error autoguardando";
+    }
+  } catch (_e) {
+    if (mapStatus) mapStatus.textContent = "Error autoguardando";
+  } finally {
+    autoSaving.map = false;
+  }
+}
+function scheduleAutoSaveFixed() {
+  const fixedStatus = document.getElementById("fixed-status");
+  if (autoSaveTimers.fixed) clearTimeout(autoSaveTimers.fixed);
+  if (fixedStatus) fixedStatus.textContent = "Autoguardando...";
+  autoSaveTimers.fixed = setTimeout(doAutoSaveFixed, 800);
+}
+async function doAutoSaveFixed() {
+  if (autoSaving.fixed) {
+    scheduleAutoSaveFixed();
+    return;
+  }
+  autoSaving.fixed = true;
+  const fixedStatus = document.getElementById("fixed-status");
+  try {
+    const r = await authFetch(apiBase + "/data/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ consent_fixed_elements: fixedElements }),
+    });
+    if (r.ok) {
+      if (fixedStatus) {
+        fixedStatus.textContent = "Guardado";
+        setTimeout(() => {
+          if (fixedStatus.textContent === "Guardado")
+            fixedStatus.textContent = "";
+        }, 1200);
+      }
+    } else {
+      if (fixedStatus) fixedStatus.textContent = "Error autoguardando";
+    }
+  } catch (_e) {
+    if (fixedStatus) fixedStatus.textContent = "Error autoguardando";
+  } finally {
+    autoSaving.fixed = false;
+  }
+}
+function scheduleAutoSaveSignaturePlacement() {
+  const status = document.getElementById("signature-status");
+  if (autoSaveTimers.signature) clearTimeout(autoSaveTimers.signature);
+  if (status) status.textContent = "Autoguardando...";
+  autoSaveTimers.signature = setTimeout(doAutoSaveSignaturePlacement, 900);
+}
+async function doAutoSaveSignaturePlacement() {
+  if (autoSaving.signature) {
+    scheduleAutoSaveSignaturePlacement();
+    return;
+  }
+  if (!signaturePlacement) {
+    const status = document.getElementById("signature-status");
+    if (status) status.textContent = "";
+    return;
+  }
+  autoSaving.signature = true;
+  try {
+    const status = document.getElementById("signature-status");
+    const r = await authFetch(apiBase + "/data/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ consent_signature_rect: signaturePlacement }),
+    });
+    if (r.ok) {
+      if (status) {
+        status.textContent = "Posición guardada";
+        setTimeout(() => {
+          if (status.textContent === "Posición guardada")
+            status.textContent = "";
+        }, 1400);
+      }
+      signaturePlacementDirty = false;
+      updateSignaturePlacementButtons();
+    } else {
+      if (status) status.textContent = "Error autoguardando";
+    }
+  } catch (_e) {
+    const status = document.getElementById("signature-status");
+    if (status) status.textContent = "Error autoguardando";
+  } finally {
+    autoSaving.signature = false;
+  }
+}
+const sampleValues = {
+  full_name: "Juan Pérez García",
+  first_name: "Juan",
+  last_name: "Pérez García",
+  dni: "00000000A",
+  legal_guardian_full_name: "Juan José Pérez Pérez",
+  legal_guardian_dni: "00000001B",
+  address: "Calle Mayor 1, 1ºA",
+  postal_code: "31000",
+  birth_date: "01/01/1970",
+  birth_date_day: "01",
+  birth_date_month: "01",
+  birth_date_year: "1970",
+  mobile: "600123123",
+  appointment_day: "31",
+  appointment_month: "12",
+  appointment_month_name: "Diciembre",
+  appointment_year_short: "25",
+  appointment_year: "2025",
+};
+const fieldLabels = {
+  full_name: "Nombre completo",
+  first_name: "Nombre",
+  last_name: "Apellidos",
+  dni: "DNI",
+  legal_guardian_full_name: "Nombre completo tutor legal",
+  legal_guardian_dni: "DNI tutor legal",
+  address: "Dirección",
+  postal_code: "Código postal",
+  birth_date: "Fecha de nacimiento (completa)",
+  birth_date_day: "Fecha de nacimiento (día)",
+  birth_date_month: "Fecha de nacimiento (mes)",
+  birth_date_year: "Fecha de nacimiento (año)",
+  mobile: "Móvil",
+  appointment_day: "Día cita",
+  appointment_month: "Mes cita",
+  appointment_month_name: "Mes cita (nombre)",
+  appointment_year_short: "Año cita (2 dígitos)",
+  appointment_year: "Año cita (4 dígitos)",
+};
+const saveBtn = document.getElementById("btn-save-general");
+const statusEl = document.getElementById("save-status");
+
+async function loadSettings() {
+  statusEl.textContent = "Cargando...";
+  try {
+    const res = await authFetch(apiBase + "/data/settings");
+    const js = await res.json();
+    if (js?.settings) {
+      consentChk.checked = !!js.settings.business_needs_consent;
+      consentFieldMap = js.settings.consent_field_map || {};
+      fixedElements = Array.isArray(js.settings.consent_fixed_elements)
+        ? js.settings.consent_fixed_elements
+        : [];
+      signatureData = js.settings.consent_signature || null;
+      signaturePlacement = js.settings.consent_signature_rect || null;
+      updateSignaturePreview();
+      ensureSignatureRatio();
+      updateSignaturePlacementButtons();
+      // Migración suave: si no hay full_name pero sí first_name o last_name, proponerlo copiando coordenadas del primero sin eliminar los originales
+      try {
+        if (
+          !consentFieldMap.full_name &&
+          (consentFieldMap.first_name || consentFieldMap.last_name)
+        ) {
+          const a = consentFieldMap.first_name || consentFieldMap.last_name;
+          if (a) {
+            consentFieldMap.full_name = { ...a };
+          }
+        }
+      } catch (_e) {}
+      const info = js.settings.consent_pdf_info;
+      if (info?.filename) {
+        pdfDownload.classList.remove("hidden");
+        pdfDownload.href = "#";
+        pdfDownload.textContent =
+          "Ver PDF (" + Math.round((info.size || 0) / 1024) + " KB)";
+        loadPdf(); // intento cargar preview
+        // Convertir UI a modo "cambiar plantilla"
+        if (pdfInput) {
+          pdfInput.classList.add("hidden");
+        }
+        if (uploadBtn) {
+          uploadBtn.textContent = "Cambiar plantilla";
+          uploadBtn.dataset.mode = "change";
+        }
+      }
+      rebuildFieldList();
+      rebuildFixedList();
+      toggleConsentConfig();
+    }
+    statusEl.textContent = "";
+  } catch (e) {
+    statusEl.textContent = "Error cargando ajustes";
+  }
+}
+
+function toggleConsentConfig() {
+  consentConfig.classList.toggle("hidden", !consentChk.checked);
+}
+
+async function saveSettings() {
+  saveBtn.disabled = true;
+  statusEl.textContent = "Guardando...";
+  try {
+    const res = await authFetch(apiBase + "/data/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ business_needs_consent: consentChk.checked }),
+    });
+    if (!res.ok) throw new Error("save_failed");
+    statusEl.textContent = "Guardado";
+    setTimeout(() => {
+      statusEl.textContent = "";
+    }, 1500);
+  } catch (e) {
+    statusEl.textContent = "Error guardando";
+  } finally {
+    saveBtn.disabled = false;
+    toggleConsentConfig();
+  }
+}
+function ensureChangeTemplateModal() {
+  let modal = document.getElementById("change-template-modal");
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "change-template-modal";
+  modal.className =
+    "fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4";
+  modal.innerHTML = `
+          <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-5 space-y-4">
+            <h3 class="text-sm font-semibold text-slate-700">Cambiar plantilla PDF</h3>
+            <div class="text-xs text-slate-600 space-y-2 leading-relaxed">
+              <p>Vas a seleccionar una nueva plantilla. Al continuar:</p>
+              <ul class="list-disc pl-5 space-y-1">
+                <li>Se eliminarán todos los <strong>campos variables</strong> colocados.</li>
+                <li>Se eliminarán todos los <strong>textos fijos</strong>.</li>
+                <li>La <strong>posición de la firma</strong> se reseteará (la firma se conserva).</li>
+              </ul>
+              <p class="text-[11px] text-amber-600 font-medium">Esta acción no se puede deshacer.</p>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" data-action="cancel" class="px-3 py-1.5 rounded border border-slate-300 text-xs hover:bg-slate-100">Cancelar</button>
+              <button type="button" data-action="confirm" class="px-3 py-1.5 rounded bg-red-600 text-white text-xs hover:bg-red-500">Continuar</button>
+            </div>
+          </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener("click", (ev) => {
+    if (ev.target === modal) {
+      modal.remove();
+    }
+  });
+  modal
+    .querySelector('[data-action="cancel"]')
+    .addEventListener("click", () => modal.remove());
+  modal
+    .querySelector('[data-action="confirm"]')
+    .addEventListener("click", () => {
+      modal.remove();
+      pendingTemplateChange = true;
+      autoUploadOnSelect = true;
+      // Limpiar selección previa para forzar evento change aunque elija mismo archivo
+      if (pdfInput) {
+        pdfInput.value = "";
+      }
+      pdfInput?.click();
+    });
+  return modal;
+}
+
+function performUpload(isTemplateChange = false) {
+  if (!pdfInput.files?.length) return;
+  uploadBtn.disabled = true;
+  pdfStatus.textContent = isTemplateChange
+    ? "Cambiando plantilla..."
+    : "Subiendo...";
+  const fd = new FormData();
+  fd.append("file", pdfInput.files[0]);
+  authFetch(apiBase + "/data/settings/consent-pdf", {
+    method: "POST",
+    body: fd,
+  })
+    .then(async (r) => {
+      if (!r.ok) throw new Error("upload");
+      await r.json().catch(() => null);
+      // Si es cambio de plantilla limpiar estructuras
+      if (isTemplateChange) {
+        consentFieldMap = {};
+        fixedElements = [];
+        // Resetear sólo posición de firma, conservar imagen
+        signaturePlacement = null;
+        signaturePlacementDirty = false;
+        updateSignaturePlacementButtons();
+        rebuildFieldList();
+        rebuildFixedList();
+        renderMarkers();
+        updateSignaturePreview();
+        // Persistir limpieza
+        authFetch(apiBase + "/data/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            consent_field_map: {},
+            consent_fixed_elements: [],
+            consent_signature_rect: null,
+          }),
+        }).catch(() => {});
+      }
+      pdfStatus.textContent = isTemplateChange
+        ? "Plantilla cambiada"
+        : "Subido";
+      pdfDownload.classList.remove("hidden");
+      pdfDownload.href = apiBase + "/data/settings/consent-pdf";
+      pdfDownload.textContent = "Ver PDF";
+      // Asegurar modo cambiar plantilla activo
+      if (uploadBtn) {
+        uploadBtn.textContent = "Cambiar plantilla";
+        uploadBtn.dataset.mode = "change";
+      }
+      if (pdfInput) {
+        pdfInput.classList.add("hidden");
+      }
+      setTimeout(() => {
+        if (
+          pdfStatus.textContent.startsWith("Plantilla") ||
+          pdfStatus.textContent === "Subido"
+        )
+          pdfStatus.textContent = "";
+      }, 1800);
+      loadPdf(true);
+    })
+    .catch(() => {
+      pdfStatus.textContent = "Error";
+      setTimeout(() => {
+        if (pdfStatus.textContent === "Error") pdfStatus.textContent = "";
+      }, 3000);
+    })
+    .finally(() => {
+      uploadBtn.disabled = false;
+      pendingTemplateChange = false;
+      autoUploadOnSelect = false;
+    });
+}
+
+// Nuevo handler botón
+uploadBtn.addEventListener("click", () => {
+  if (uploadBtn.dataset.mode === "change") {
+    ensureChangeTemplateModal();
+    return;
+  }
+  // Modo inicial (no hay PDF)
+  if (!pdfInput.files?.length) {
+    pdfInput.click();
+    return;
+  }
+  performUpload(false);
+});
+
+// Auto subir tras seleccionar archivo durante cambio de plantilla
+pdfInput.addEventListener("change", () => {
+  if (autoUploadOnSelect && pdfInput.files?.length) {
+    performUpload(true);
+  }
+});
+
+function rebuildFieldList() {
+  fieldList.innerHTML = "";
+  Object.entries(consentFieldMap).forEach(([k, v]) => {
+    // Asegurar fontSize por defecto
+    if (typeof v.fontSize !== "number") v.fontSize = 12;
+    const li = document.createElement("li");
+    li.className = "flex items-center gap-2 bg-slate-100 rounded px-2 py-1";
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = fieldLabels[k] || k;
+    labelSpan.className = "text-xs";
+    const sizeSelect = document.createElement("select");
+    sizeSelect.className = "border rounded px-1 py-0.5 text-[10px] bg-white";
+    [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24].forEach((s) => {
+      const op = document.createElement("option");
+      op.value = s;
+      op.textContent = s;
+      if (s === v.fontSize) op.selected = true;
+      sizeSelect.appendChild(op);
+    });
+    sizeSelect.addEventListener("change", () => {
+      v.fontSize = parseInt(sizeSelect.value, 10);
+      consentFieldMap[k] = v;
+      renderMarkers();
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "✕";
+    delBtn.title = "Eliminar";
+    delBtn.className =
+      "text-[11px] px-1 rounded hover:bg-red-500/10 hover:text-red-600";
+    // Forzar que el label no empuje el select más allá
+    labelSpan.classList.add("flex-shrink-0");
+    sizeSelect.classList.add("flex-shrink-0");
+    li.classList.add("justify-start");
+    delBtn.addEventListener("click", () => {
+      delete consentFieldMap[k];
+      rebuildFieldList();
+    });
+    li.appendChild(labelSpan);
+    // separador flexible
+    const spacer = document.createElement("div");
+    spacer.className = "flex-1";
+    li.appendChild(spacer);
+    li.appendChild(sizeSelect);
+    li.appendChild(delBtn);
+    fieldList.appendChild(li);
+  });
+  renderMarkers();
+}
+
+function rebuildFixedList() {
+  const ul = document.getElementById("fixed-list");
+  if (!ul) return;
+  ul.innerHTML = "";
+  fixedElements.forEach((el) => {
+    if (typeof el.fontSize !== "number") el.fontSize = 12;
+    const li = document.createElement("li");
+    // Estilos actualizados: antes usaba tonos emerald (verde); ahora ámbar para unificar con marcador "Fijo" en el lienzo
+    li.className =
+      "flex items-center gap-1 bg-amber-50 rounded px-2 py-1 group";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = el.text;
+    btn.className =
+      "flex-1 text-left text-[11px] truncate rounded px-1 py-0.5 " +
+      (fixedSelection === el.id
+        ? "ring-1 ring-amber-500 bg-amber-100"
+        : "hover:bg-amber-100");
+    btn.addEventListener("click", () => {
+      fixedSelection = fixedSelection === el.id ? null : el.id;
+      fixedPlacementMode = !!fixedSelection;
+      editingFixedId = null;
+      rebuildFixedList();
+    });
+    btn.addEventListener("dblclick", () => startEditFixed(el.id));
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "✎";
+    editBtn.title = "Editar";
+    editBtn.className =
+      "text-[10px] px-1 rounded hover:bg-amber-600/10 hover:text-amber-700 opacity-0 group-hover:opacity-100";
+    editBtn.addEventListener("click", () => startEditFixed(el.id));
+    const size = document.createElement("select");
+    size.className = "border rounded px-1 py-0.5 text-[10px] bg-white";
+    [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 24].forEach((s) => {
+      const op = document.createElement("option");
+      op.value = s;
+      op.textContent = s;
+      if (s === el.fontSize) op.selected = true;
+      size.appendChild(op);
+    });
+    size.addEventListener("change", () => {
+      el.fontSize = parseInt(size.value, 10);
+      renderMarkers();
+    });
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "✕";
+    del.className =
+      "text-[10px] px-1 rounded hover:bg-red-500/10 hover:text-red-600 opacity-0 group-hover:opacity-100";
+    del.addEventListener("click", () => {
+      fixedElements = fixedElements.filter((f) => f.id !== el.id);
+      if (fixedSelection === el.id) fixedSelection = null;
+      if (editingFixedId === el.id) editingFixedId = null;
+      rebuildFixedList();
+      renderMarkers();
+    });
+    li.appendChild(btn);
+    li.appendChild(editBtn);
+    li.appendChild(size);
+    li.appendChild(del);
+    ul.appendChild(li);
+  });
+}
+
+// ---- Firma ----
+function updateSignaturePreview() {
+  const prev = document.getElementById("signature-preview");
+  const delBtn = document.getElementById("btn-remove-signature");
+  if (!prev) return;
+  if (signatureData) {
+    prev.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = signatureData;
+    img.alt = "Firma";
+    img.className = "max-h-24 object-contain";
+    prev.appendChild(img);
+    delBtn?.classList.remove("hidden");
+  } else {
+    prev.textContent = "Sin firma";
+    delBtn?.classList.add("hidden");
+  }
+  updateSignaturePlacementButtons();
+}
+
+function ensureSignatureRatio() {
+  if (!signatureData) return;
+  try {
+    const img = new Image();
+    img.onload = () => {
+      signatureImageRatio = img.height / img.width;
+      if (signaturePlacement && signaturePlacement.w && signaturePlacement.h) {
+        signaturePlacement.ratio = signatureImageRatio;
+      }
+    };
+    img.src = signatureData;
+  } catch (_e) {}
+}
+
+function updateSignaturePlacementButtons() {
+  const placeBtn = document.getElementById("btn-place-signature");
+  if (placeBtn) placeBtn.disabled = !signatureData;
+}
+
+function openSignatureModal() {
+  let modal = document.getElementById("signature-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "signature-modal";
+    modal.className =
+      "fixed inset-0 z-[100] flex items-center justify-center bg-black/40";
+    modal.innerHTML = `
+            <div class="signature-backdrop absolute inset-0"></div>
+            <div class="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-auto p-4 flex flex-col gap-3">
+              <h3 class="text-sm font-semibold text-slate-700">Dibujar firma</h3>
+              <div class="border rounded bg-slate-50 p-2">
+                <canvas id="signature-canvas" class="border border-slate-300 rounded w-full touch-none"></canvas>
+              </div>
+              <div class="flex flex-wrap gap-2 justify-between items-center text-[11px] text-slate-500">
+                <span id="signature-hint" class="flex-1">Traza con el ratón, dedo o lápiz. Mantén pulsado para dibujar.</span>
+                <div class="flex items-center gap-1">
+                  <div class="flex rounded overflow-hidden border border-slate-300">
+                    <button type="button" data-stroke="1" title="Trazo fino" class="sig-stroke px-2 py-1 text-slate-600 hover:bg-slate-100 flex items-center justify-center">
+                      <span class="block w-1 h-1 bg-slate-600 rounded-full"></span>
+                    </button>
+                    <button type="button" data-stroke="2" title="Trazo medio" class="sig-stroke px-2 py-1 bg-slate-200 text-slate-800 flex items-center justify-center">
+                      <span class="block w-2 h-2 bg-slate-700 rounded-full"></span>
+                    </button>
+                    <button type="button" data-stroke="4" title="Trazo grueso" class="sig-stroke px-2 py-1 text-slate-600 hover:bg-slate-100 flex items-center justify-center">
+                      <span class="block w-3 h-3 bg-slate-800 rounded-full"></span>
+                    </button>
+                  </div>
+                  <button type="button" id="btn-clear-signature" class="px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 text-slate-600">Limpiar</button>
+                </div>
+              </div>
+              <div class="flex justify-end gap-2 pt-1">
+                <button type="button" id="btn-cancel-signature" class="px-3 py-1 rounded text-slate-600 hover:bg-slate-200">Cancelar</button>
+                <button type="button" id="btn-save-signature" class="px-3 py-1 rounded bg-slate-700 text-white hover:bg-slate-600 disabled:opacity-40">Guardar</button>
+              </div>
+              <span id="signature-modal-status" class="text-[11px] text-slate-500"></span>
+            </div>`;
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove("hidden");
+  ensureSignatureRatio();
+  setupSignatureCanvas();
+}
+
+function closeSignatureModal() {
+  const modal = document.getElementById("signature-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function setupSignatureCanvas() {
+  const canvas = document.getElementById("signature-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  // Proporción objetivo: ratio de la firma existente o fallback
+  let ratio =
+    signatureImageRatio && signatureImageRatio > 0 ? signatureImageRatio : 0.35;
+  const containerWidth = canvas.parentElement.clientWidth || 400;
+  // Altura derivada
+  let desiredWidth = containerWidth;
+  let desiredHeight = Math.max(80, Math.round(desiredWidth * ratio));
+  // Limitar altura máxima para no ocupar demasiado
+  if (desiredHeight > 260) {
+    desiredHeight = 260;
+    desiredWidth = Math.round(desiredHeight / ratio);
+  }
+  canvas.style.width = desiredWidth + "px";
+  canvas.style.height = desiredHeight + "px";
+  canvas.width = desiredWidth * 2;
+  canvas.height = desiredHeight * 2;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(2, 2);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#111827";
+  let currentStrokeWidth = 2;
+  function setStrokeWidth(w) {
+    currentStrokeWidth = w;
+    ctx.lineWidth = w;
+    // Actualizar UI
+    document.querySelectorAll("#signature-modal .sig-stroke").forEach((btn) => {
+      const bw = parseInt(btn.getAttribute("data-stroke"), 10);
+      if (bw === w) {
+        btn.classList.add("bg-slate-200", "text-slate-800");
+        btn.classList.remove("text-slate-600");
+      } else {
+        btn.classList.remove("bg-slate-200", "text-slate-800");
+        btn.classList.add("text-slate-600");
+      }
+    });
+  }
+  document.querySelectorAll("#signature-modal .sig-stroke").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      setStrokeWidth(parseInt(btn.getAttribute("data-stroke"), 10))
+    );
+  });
+  // Si ya hay firma, pintar como fondo tenue
+  if (signatureData) {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, desiredWidth, desiredHeight);
+      };
+      img.src = signatureData;
+    } catch (_e) {}
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  let last = null;
+  function pointerDown(e) {
+    e.preventDefault();
+    drawing = true;
+    signatureDirty = true;
+    last = getPos(e);
+  }
+  function pointerMove(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    last = p;
+  }
+  function pointerUp(e) {
+    drawing = false;
+  }
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+  canvas.onmousedown = pointerDown;
+  canvas.onmousemove = pointerMove;
+  window.addEventListener("mouseup", pointerUp, { once: false });
+  canvas.ontouchstart = pointerDown;
+  canvas.ontouchmove = pointerMove;
+  canvas.ontouchend = pointerUp;
+  document
+    .getElementById("btn-clear-signature")
+    ?.addEventListener("click", () => {
+      ctx.clearRect(0, 0, desiredWidth, desiredHeight);
+      signatureDirty = true;
+    });
+  document
+    .getElementById("btn-cancel-signature")
+    ?.addEventListener("click", () => {
+      closeSignatureModal();
+    });
+  document
+    .getElementById("btn-save-signature")
+    ?.addEventListener("click", async () => {
+      try {
+        const status = document.getElementById("signature-status");
+        const modalStatus = document.getElementById("signature-modal-status");
+        modalStatus.textContent = "Guardando...";
+        // Post-proceso: convertir fondo blanco puro (o casi blanco) a transparente
+        try {
+          const ctx2 = canvas.getContext("2d");
+          const imgData = ctx2.getImageData(0, 0, canvas.width, canvas.height);
+          const d = imgData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i],
+              g = d[i + 1],
+              b = d[i + 2],
+              a = d[i + 3];
+            // Si es casi blanco y opaco => hacerlo transparente
+            if (a > 0 && r > 245 && g > 245 && b > 245) {
+              d[i + 3] = 0;
+            }
+          }
+          ctx2.putImageData(imgData, 0, 0);
+        } catch (_e) {}
+        // Actualizar ratio a partir del canvas antes de exportar
+        try {
+          const dispW = parseFloat(canvas.style.width) || canvas.width;
+          const dispH = parseFloat(canvas.style.height) || canvas.height;
+          if (dispW > 0 && dispH > 0) {
+            signatureImageRatio = dispH / dispW;
+          }
+        } catch (_e) {}
+        const dataUrl = canvas.toDataURL("image/png");
+        signatureData = dataUrl;
+        // Guardar en settings
+        const body = { consent_signature: signatureData };
+        const r = await authFetch(apiBase + "/data/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error("save");
+        modalStatus.textContent = "Guardado";
+        status.textContent = "Firma guardada";
+        setTimeout(() => {
+          modalStatus.textContent = "";
+          status.textContent = "";
+        }, 1500);
+        updateSignaturePreview();
+        closeSignatureModal();
+      } catch (e) {
+        const modalStatus = document.getElementById("signature-modal-status");
+        modalStatus.textContent = "Error guardando";
+      }
+    });
+  // Cerrar con ESC / clic fuera
+  function escHandler(ev) {
+    if (ev.key === "Escape") {
+      closeSignatureModal();
+      window.removeEventListener("keydown", escHandler);
+    }
+  }
+  window.addEventListener("keydown", escHandler);
+  const backdrop = document.querySelector(
+    "#signature-modal .signature-backdrop"
+  );
+  backdrop?.addEventListener("click", () => closeSignatureModal());
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.id === "btn-create-signature") {
+    openSignatureModal();
+  }
+  if (e.target && e.target.id === "btn-remove-signature") {
+    signatureData = null;
+    updateSignaturePreview();
+    const status = document.getElementById("signature-status");
+    if (status) {
+      status.textContent = "Eliminada";
+      setTimeout(() => (status.textContent = ""), 1200);
+    }
+    // Persistir eliminación
+    authFetch(apiBase + "/data/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ consent_signature: null }),
+    }).catch(() => {});
+    signaturePlacement = null;
+    signaturePlacementDirty = false;
+    updateSignaturePlacementButtons();
+    renderMarkers();
+  }
+  if (e.target && e.target.id === "btn-place-signature") {
+    if (!signatureData) return;
+    signaturePlacementMode = true;
+    signaturePlacement = null;
+    signaturePlacementDirty = true;
+    updateSignaturePlacementButtons();
+    renderMarkers();
+  }
+});
+
+// saveSignaturePlacement eliminado: autoguardado
+
+function renderMarkers() {
+  fieldLayer.innerHTML = "";
+  if (!pdfPageViewport) return;
+  const w = pdfCanvas.width,
+    h = pdfCanvas.height;
+  if (showGuides) {
+    const drawLine = (yn, cls) => {
+      const line = document.createElement("div");
+      line.className = `absolute left-0 w-full ${cls}`;
+      line.style.top = yn * h + "px";
+      line.style.height = "0";
+      fieldLayer.appendChild(line);
+    };
+    const drawVLine = (xn, cls) => {
+      const line = document.createElement("div");
+      line.className = `absolute top-0 h-full ${cls}`;
+      line.style.left = xn * w + "px";
+      line.style.width = "0";
+      fieldLayer.appendChild(line);
+    };
+    snapGuidesY.forEach((y) => drawLine(y, "border-t border-pink-400/70"));
+    snapUnderlineY.forEach((y) =>
+      drawLine(y, "border-t border-emerald-400/70")
+    );
+    snapGuidesX.forEach((x) => drawVLine(x, "border-l border-fuchsia-400/60"));
+  }
+  Object.entries(consentFieldMap).forEach(([k, v]) => {
+    if (v.page !== 1) return;
+    if (v.w != null && v.h != null) {
+      const box = document.createElement("div");
+      box.className =
+        "absolute border border-dashed border-sky-600/80 bg-sky-500/10 text-[10px] text-sky-900 font-medium cursor-move";
+      box.style.left = v.x * w + "px";
+      box.style.top = v.y * h + "px";
+      box.style.width = v.w * w + "px";
+      box.style.height = v.h * h + "px";
+      box.dataset.field = k;
+      // Asas
+      const handles = [
+        { pos: "tl", x: 0, y: 0, cx: "-translate-x-1/2 -translate-y-1/2" },
+        { pos: "tr", x: 1, y: 0, cx: "translate-x-1/2 -translate-y-1/2" },
+        { pos: "bl", x: 0, y: 1, cx: "-translate-x-1/2 translate-y-1/2" },
+        { pos: "br", x: 1, y: 1, cx: "translate-x-1/2 translate-y-1/2" },
+        { pos: "tm", x: 0.5, y: 0, cx: "-translate-x-1/2 -translate-y-1/2" },
+        { pos: "bm", x: 0.5, y: 1, cx: "-translate-x-1/2 translate-y-1/2" },
+        { pos: "ml", x: 0, y: 0.5, cx: "-translate-x-1/2 -translate-y-1/2" },
+        { pos: "mr", x: 1, y: 0.5, cx: "translate-x-1/2 -translate-y-1/2" },
+      ];
+      handles.forEach((hd) => {
+        const ha = document.createElement("div");
+        ha.className =
+          "absolute w-2 h-2 bg-sky-600 rounded-sm cursor-pointer select-none " +
+          hd.cx;
+        ha.style.left = hd.x * 100 + "%";
+        ha.style.top = hd.y * 100 + "%";
+        ha.dataset.handle = hd.pos;
+        ha.addEventListener("mousedown", (e) => startResize(e, k, hd.pos));
+        box.appendChild(ha);
+      });
+      const val = sampleValues[k];
+      if (val) {
+        const sample = document.createElement("div");
+        sample.className = "absolute left-0 top-0 font-normal text-slate-800";
+        const fontSize = v.fontSize || 12;
+        sample.style.fontSize = fontSize + "px";
+        sample.style.lineHeight = "1.05";
+        // Ajuste de líneas: crecer en ancho hasta que necesite salto; si no cabe 2ª línea entera, mantener una línea y permitir overflow horizontal
+        sample.style.whiteSpace = "pre";
+        sample.textContent = val;
+        // Medición después de insertar provisionalmente
+        requestAnimationFrame(() => {
+          try {
+            const maxW = v.w * w;
+            const maxH = v.h * h;
+            const lineH = fontSize * 1.05;
+            // Permitir wrap si caben >=2 líneas completas
+            if (maxH >= lineH * 2) {
+              sample.style.whiteSpace = "pre-wrap";
+              sample.style.maxWidth = maxW + "px";
+            } else {
+              // Una sola línea, expandir horizontal sin wrap
+              sample.style.whiteSpace = "pre";
+              sample.style.maxWidth = maxW + "px";
+              sample.style.overflow = "hidden";
+              sample.style.textOverflow = "clip";
+            }
+          } catch (_e) {}
+        });
+        box.appendChild(sample);
+      }
+      const tag = document.createElement("div");
+      // Etiqueta variable (más separada arriba)
+      tag.className =
+        "absolute -top-5 left-0 bg-sky-600 text-white px-1 py-px text-[9px] rounded max-w-[140px] whitespace-nowrap overflow-hidden text-ellipsis";
+      tag.textContent = fieldLabels[k] || k;
+      tag.dataset.field = k;
+      box.appendChild(tag);
+      box.addEventListener("mousedown", (e) => {
+        if (fieldSelect.value) fieldSelect.value = "";
+        startDragMarker(e, k, true);
+      });
+      fieldLayer.appendChild(box);
+    } else {
+      const container = document.createElement("div");
+      container.className = "absolute cursor-move";
+      container.style.left = v.x * w + "px";
+      container.style.top = v.y * h + "px";
+      container.dataset.field = k;
+      const val = sampleValues[k];
+      if (val) {
+        const sample = document.createElement("div");
+        sample.className =
+          "whitespace-pre-wrap font-normal text-slate-800 bg-white/80 px-0.5 rounded";
+        const fontSize = v.fontSize || 12;
+        sample.style.fontSize = fontSize + "px";
+        sample.textContent = val;
+        container.appendChild(sample);
+      }
+      const tag = document.createElement("div");
+      // Etiqueta variable (más separada arriba)
+      tag.className =
+        "absolute -top-5 left-0 bg-sky-600 text-white px-1 py-px text-[9px] rounded max-w-[140px] whitespace-nowrap overflow-hidden text-ellipsis";
+      tag.textContent = fieldLabels[k] || k;
+      tag.dataset.field = k;
+      container.appendChild(tag);
+      // Asa para convertir punto en rectángulo
+      const convert = document.createElement("div");
+      convert.className =
+        "absolute -bottom-3 left-0 bg-sky-600 text-white text-[9px] leading-none px-1 rounded shadow cursor-pointer select-none";
+      convert.textContent = "▢";
+      convert.title = "Convertir a rectángulo redimensionable";
+      convert.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        startConvertPointToRect(k);
+      });
+      container.appendChild(convert);
+      container.addEventListener("mousedown", (e) => {
+        if (fieldSelect.value) fieldSelect.value = "";
+        startDragMarker(e, k, false);
+      });
+      fieldLayer.appendChild(container);
+    }
+  });
+  // Fijos colocados
+  fixedElements.forEach((el) => {
+    const page = el.page == null ? 1 : el.page;
+    if (page !== 1 || el.x == null || el.y == null) return;
+    const cont = document.createElement("div");
+    cont.className = "absolute cursor-move group";
+    cont.style.left = el.x * w + "px";
+    cont.style.top = el.y * h + "px";
+    cont.dataset.fixedId = el.id;
+    const txt = document.createElement("div");
+    txt.textContent = el.text;
+    txt.className =
+      "whitespace-pre bg-amber-100/70 border border-amber-400/60 rounded px-1 text-slate-800 shadow-sm";
+    txt.style.fontSize = (el.fontSize || 12) + "px";
+    cont.appendChild(txt);
+    const badge = document.createElement("div");
+    badge.textContent = "Fijo";
+    badge.className =
+      "absolute -top-3 left-0 bg-amber-500 text-white px-1 py-px text-[9px] rounded";
+    cont.appendChild(badge);
+    cont.addEventListener("mousedown", (e) => startDragFixed(e, el.id));
+    fieldLayer.appendChild(cont);
+  });
+  // Fantasma de colocación
+  if (fixedPlacementMode && typeof fixedSelection === "string") {
+    const el = fixedElements.find((f) => f.id === fixedSelection);
+    if (el && (el.x == null || el.y == null)) {
+      const ghost = document.createElement("div");
+      ghost.id = "fixed-ghost";
+      ghost.className = "absolute pointer-events-none opacity-60";
+      const inner = document.createElement("div");
+      inner.textContent = el.text || "Fijo";
+      inner.className =
+        "whitespace-pre bg-amber-200/60 border border-amber-400/60 rounded px-1 text-slate-700";
+      inner.style.fontSize = (el.fontSize || 12) + "px";
+      ghost.appendChild(inner);
+      fieldLayer.appendChild(ghost);
+    }
+  }
+  // Firma colocada
+  if (signatureData && signaturePlacement && signaturePlacement.page === 1) {
+    const sig = document.createElement("div");
+    sig.className =
+      "absolute border border-dashed border-slate-600/80 bg-white/70 backdrop-blur-sm cursor-move group";
+    sig.style.left = signaturePlacement.x * w + "px";
+    sig.style.top = signaturePlacement.y * h + "px";
+    sig.style.width = signaturePlacement.w * w + "px";
+    sig.style.height = signaturePlacement.h * h + "px";
+    const img = document.createElement("img");
+    img.src = signatureData;
+    img.alt = "Firma";
+    img.className =
+      "absolute inset-0 w-full h-full object-contain pointer-events-none";
+    sig.appendChild(img);
+    const badge = document.createElement("div");
+    badge.textContent = "Firma";
+    badge.className =
+      "absolute -top-4 left-0 bg-slate-700 text-white px-1 py-px text-[9px] rounded";
+    sig.appendChild(badge);
+    const handles = [
+      { p: "tl", x: 0, y: 0, c: "-translate-x-1/2 -translate-y-1/2" },
+      { p: "tr", x: 1, y: 0, c: "translate-x-1/2 -translate-y-1/2" },
+      { p: "bl", x: 0, y: 1, c: "-translate-x-1/2 translate-y-1/2" },
+      { p: "br", x: 1, y: 1, c: "translate-x-1/2 translate-y-1/2" },
+    ];
+    handles.forEach((hd) => {
+      const ha = document.createElement("div");
+      ha.className =
+        "absolute w-2 h-2 bg-slate-700 rounded-sm cursor-pointer " + hd.c;
+      ha.style.left = hd.x * 100 + "%";
+      ha.style.top = hd.y * 100 + "%";
+      ha.dataset.handle = hd.p;
+      ha.addEventListener("mousedown", (e) => startResizeSignature(e, hd.p));
+      sig.appendChild(ha);
+    });
+    sig.addEventListener("mousedown", (e) => startDragSignature(e));
+    fieldLayer.appendChild(sig);
+  }
+  // Fantasma firma
+  if (
+    signatureData &&
+    signaturePlacementMode &&
+    (!signaturePlacement || signaturePlacement.x == null)
+  ) {
+    const ghost = document.createElement("div");
+    ghost.id = "signature-ghost";
+    ghost.className =
+      "absolute pointer-events-none opacity-60 border border-dashed border-slate-500 bg-white/40";
+    fieldLayer.appendChild(ghost);
+  }
+}
+// Drag fijos
+let draggingFixed = null;
+function startDragFixed(e, id) {
+  e.preventDefault();
+  e.stopPropagation();
+  const el = fixedElements.find((f) => f.id === id);
+  if (!el || el.x == null || el.y == null) return;
+  draggingFixed = {
+    id,
+    startMouseX: e.clientX,
+    startMouseY: e.clientY,
+    origX: el.x,
+    origY: el.y,
+  };
+  window.addEventListener("mousemove", dragFixedMove);
+  window.addEventListener("mouseup", endDragFixed, { once: true });
+}
+function dragFixedMove(e) {
+  if (!draggingFixed) return;
+  const el = fixedElements.find((f) => f.id === draggingFixed.id);
+  if (!el) return;
+  const rect = pdfCanvas.getBoundingClientRect();
+  let nx =
+    draggingFixed.origX + (e.clientX - draggingFixed.startMouseX) / rect.width;
+  let ny =
+    draggingFixed.origY + (e.clientY - draggingFixed.startMouseY) / rect.height;
+  nx = Math.min(Math.max(nx, 0), 1);
+  ny = Math.min(Math.max(ny, 0), 1);
+  el.x = applySnapX(nx, 0);
+  el.y = applySnapPoint(ny, el.fontSize || 12);
+  renderMarkers();
+}
+function endDragFixed() {
+  window.removeEventListener("mousemove", dragFixedMove);
+  draggingFixed = null;
+  scheduleAutoSaveFixed();
+}
+pdfCanvas.addEventListener("mousemove", (e) => {
+  const rect = pdfCanvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) / rect.width;
+  const my = (e.clientY - rect.top) / rect.height;
+  // Fantasma fijo existente
+  if (fixedPlacementMode && typeof fixedSelection === "string") {
+    const el = fixedElements.find((f) => f.id === fixedSelection);
+    if (el && (el.x == null || el.y == null)) {
+      const ghost = fieldLayer.querySelector("#fixed-ghost");
+      if (ghost) {
+        ghost.style.left = mx * pdfCanvas.width + "px";
+        ghost.style.top = my * pdfCanvas.height + "px";
+      }
+    }
+  }
+  // Fantasma variable (punto) previo a colocar
+  if (fieldSelect.value && !dragState) {
+    const fname = fieldSelect.value;
+    const existing = consentFieldMap[fname];
+    if (!existing || existing.x == null) {
+      let ghost = fieldLayer.querySelector("#var-ghost");
+      if (!ghost) {
+        ghost = document.createElement("div");
+        ghost.id = "var-ghost";
+        ghost.className = "absolute pointer-events-none opacity-60";
+        const inner = document.createElement("div");
+        inner.className =
+          "whitespace-pre bg-sky-200/60 border border-sky-400/60 rounded px-1 text-slate-700";
+        const fontSize = existing?.fontSize || globalFontDefault;
+        inner.style.fontSize = fontSize + "px";
+        inner.textContent = sampleValues[fname] || fieldLabels[fname] || fname;
+        const badge = document.createElement("div");
+        badge.textContent = fieldLabels[fname] || fname;
+        badge.className =
+          "absolute -top-3 left-0 bg-sky-500 text-white px-1 py-px text-[9px] rounded";
+        ghost.appendChild(inner);
+        ghost.appendChild(badge);
+        fieldLayer.appendChild(ghost);
+      }
+      const fontSize = existing?.fontSize || globalFontDefault;
+      const snappedX = applySnapX(mx, 0);
+      const snappedY = applySnapPoint(my, fontSize);
+      ghost.style.left = snappedX * pdfCanvas.width + "px";
+      ghost.style.top = snappedY * pdfCanvas.height + "px";
+    } else {
+      // Ya colocado -> eliminar fantasma si quedara
+      const g = fieldLayer.querySelector("#var-ghost");
+      if (g) g.remove();
+    }
+  } else {
+    const g = fieldLayer.querySelector("#var-ghost");
+    if (g) g.remove();
+  }
+  // Fantasma firma
+  if (signatureData && signaturePlacementMode) {
+    const ghost = fieldLayer.querySelector("#signature-ghost");
+    if (ghost) {
+      const canvasW = pdfCanvas.width,
+        canvasH = pdfCanvas.height;
+      const baseW = 0.25;
+      let wNorm = baseW;
+      if (wNorm + mx > 1) wNorm = Math.max(0.05, 1 - mx);
+      const ratioFactor = (signatureImageRatio || 0.35) * (canvasW / canvasH);
+      let hNorm = wNorm * ratioFactor;
+      if (hNorm + my > 1) {
+        hNorm = Math.max(0.05, 1 - my);
+        wNorm = hNorm / ratioFactor;
+      }
+      ghost.style.left = mx * canvasW + "px";
+      ghost.style.top = my * canvasH + "px";
+      ghost.style.width = wNorm * canvasW + "px";
+      ghost.style.height = hNorm * canvasH + "px";
+    }
+  }
+});
+// Drag markers
+let moving = null; // { field, type, startMouseX, startMouseY, orig }
+let resizing = null; // { field, handle, startMouseX, startMouseY, orig }
+function startDragMarker(e, field, isRect) {
+  e.preventDefault();
+  const v = consentFieldMap[field];
+  if (!v) return;
+  moving = {
+    field,
+    type: isRect ? "rect" : "point",
+    startMouseX: e.clientX,
+    startMouseY: e.clientY,
+    orig: { ...v },
+  };
+  window.addEventListener("mousemove", dragMarkerMove);
+  window.addEventListener("mouseup", endDragMarker, { once: true });
+}
+function startResize(e, field, handle) {
+  e.stopPropagation();
+  e.preventDefault();
+  const v = consentFieldMap[field];
+  if (!v) return;
+  resizing = {
+    field,
+    handle,
+    startMouseX: e.clientX,
+    startMouseY: e.clientY,
+    orig: { ...v },
+  };
+  window.addEventListener("mousemove", resizeMarkerMove);
+  window.addEventListener("mouseup", endResizeMarker, { once: true });
+}
+function startConvertPointToRect(field) {
+  const v = consentFieldMap[field];
+  if (!v || (v.w != null && v.h != null)) return;
+  const fontSize = v.fontSize || globalFontDefault;
+  const cssH =
+    parseFloat(pdfCanvas.style.height) || pdfPageViewport?.height || 1;
+  let defaultH = fontSize / cssH;
+  let defaultW = 0.18;
+  if (v.x + defaultW > 1) defaultW = Math.max(0.02, 1 - v.x);
+  consentFieldMap[field] = { ...v, w: defaultW, h: defaultH };
+  renderMarkers();
+  scheduleAutoSaveMap();
+}
+function dragMarkerMove(e) {
+  if (!moving) return;
+  const rect = pdfCanvas.getBoundingClientRect();
+  const dx = (e.clientX - moving.startMouseX) / rect.width;
+  const dy = (e.clientY - moving.startMouseY) / rect.height;
+  const v = consentFieldMap[moving.field];
+  if (!v) return;
+  if (moving.type === "rect") {
+    let nx = moving.orig.x + dx;
+    let ny = moving.orig.y + dy;
+    nx = Math.min(Math.max(nx, 0), 1 - (v.w || 0));
+    ny = Math.min(Math.max(ny, 0), 1 - (v.h || 0));
+    v.x = applySnapX(nx, v.w || 0);
+    v.y = applySnap(ny, v.h || 0);
+  } else {
+    let nx = moving.orig.x + dx;
+    let ny = moving.orig.y + dy;
+    nx = Math.min(Math.max(nx, 0), 1);
+    ny = Math.min(Math.max(ny, 0), 1);
+    const fontSize = v.fontSize || 12;
+    v.x = applySnapX(nx, 0);
+    v.y = applySnapPoint(ny, fontSize);
+  }
+  consentFieldMap[moving.field] = v;
+  renderMarkers();
+}
+function endDragMarker() {
+  window.removeEventListener("mousemove", dragMarkerMove);
+  moving = null;
+  scheduleAutoSaveMap();
+}
+function resizeMarkerMove(e) {
+  if (!resizing) return;
+  const v = consentFieldMap[resizing.field];
+  if (!v) return;
+  const rect = pdfCanvas.getBoundingClientRect();
+  const dx = (e.clientX - resizing.startMouseX) / rect.width;
+  const dy = (e.clientY - resizing.startMouseY) / rect.height;
+  let { x, y, w: rw, h: rh } = resizing.orig;
+  let nx = x,
+    ny = y,
+    nw = rw,
+    nh = rh;
+  const hnd = resizing.handle;
+  if (hnd.includes("l")) {
+    nx = x + dx;
+    nw = rw - dx;
+  }
+  if (hnd.includes("r")) {
+    nw = rw + dx;
+  }
+  if (hnd.includes("t")) {
+    ny = y + dy;
+    nh = rh - dy;
+  }
+  if (hnd.includes("b")) {
+    nh = rh + dy;
+  }
+  if (hnd === "tm") {
+    ny = y + dy;
+    nh = rh - dy;
+  }
+  if (hnd === "bm") {
+    nh = rh + dy;
+  }
+  if (hnd === "ml") {
+    nx = x + dx;
+    nw = rw - dx;
+  }
+  if (hnd === "mr") {
+    nw = rw + dx;
+  }
+  // Normalizar límites
+  if (nw < 0) {
+    nx = nx + nw;
+    nw = Math.abs(nw);
+  }
+  if (nh < 0) {
+    ny = ny + nh;
+    nh = Math.abs(nh);
+  }
+  nx = Math.min(Math.max(nx, 0), 1);
+  ny = Math.min(Math.max(ny, 0), 1);
+  nw = Math.min(nw, 1 - nx);
+  nh = Math.min(nh, 1 - ny);
+  // Altura mínima = fontSize (normalizada)
+  const fontSize = v.fontSize || 12;
+  const cssH =
+    parseFloat(pdfCanvas.style.height) || pdfPageViewport?.height || 1;
+  const minHNorm = fontSize / cssH;
+  if (nh < minHNorm) {
+    nh = minHNorm;
+  }
+  // Snap vertical (top y centro) reutilizando applySnap
+  const snappedTop = applySnap(ny, nh);
+  const snappedLeft = applySnapX(nx, nw);
+  v.x = snappedLeft;
+  v.y = snappedTop;
+  v.w = nw;
+  v.h = nh;
+  consentFieldMap[resizing.field] = v;
+  renderMarkers();
+}
+function endResizeMarker() {
+  window.removeEventListener("mousemove", resizeMarkerMove);
+  resizing = null;
+  scheduleAutoSaveMap();
+}
+// Drag / resize firma
+let draggingSignature = null;
+let resizingSignature = null;
+function startDragSignature(e) {
+  if (!signaturePlacement) return;
+  e.preventDefault();
+  e.stopPropagation();
+  draggingSignature = {
+    startMouseX: e.clientX,
+    startMouseY: e.clientY,
+    orig: { ...signaturePlacement },
+  };
+  window.addEventListener("mousemove", dragSignatureMove);
+  window.addEventListener("mouseup", endDragSignature, { once: true });
+}
+function dragSignatureMove(e) {
+  if (!draggingSignature || !signaturePlacement) return;
+  const rect = pdfCanvas.getBoundingClientRect();
+  const dx = (e.clientX - draggingSignature.startMouseX) / rect.width;
+  const dy = (e.clientY - draggingSignature.startMouseY) / rect.height;
+  let nx = draggingSignature.orig.x + dx;
+  let ny = draggingSignature.orig.y + dy;
+  nx = Math.min(Math.max(nx, 0), 1 - signaturePlacement.w);
+  ny = Math.min(Math.max(ny, 0), 1 - signaturePlacement.h);
+  signaturePlacement.x = nx;
+  signaturePlacement.y = ny;
+  signaturePlacementDirty = true;
+  updateSignaturePlacementButtons();
+  renderMarkers();
+}
+function endDragSignature() {
+  window.removeEventListener("mousemove", dragSignatureMove);
+  draggingSignature = null;
+  scheduleAutoSaveSignaturePlacement();
+}
+function startResizeSignature(e, handle) {
+  if (!signaturePlacement) return;
+  e.preventDefault();
+  e.stopPropagation();
+  resizingSignature = {
+    startMouseX: e.clientX,
+    startMouseY: e.clientY,
+    orig: { ...signaturePlacement },
+    handle,
+  };
+  window.addEventListener("mousemove", resizeSignatureMove);
+  window.addEventListener("mouseup", endResizeSignature, { once: true });
+}
+function resizeSignatureMove(e) {
+  if (!resizingSignature || !signaturePlacement) return;
+  const rect = pdfCanvas.getBoundingClientRect();
+  const dx = (e.clientX - resizingSignature.startMouseX) / rect.width;
+  const dy = (e.clientY - resizingSignature.startMouseY) / rect.height;
+  const h = resizingSignature.handle;
+  let { x, y, w } = resizingSignature.orig;
+  let delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+  if (h === "tl") {
+    x = x + delta;
+    w = w - delta;
+  }
+  if (h === "tr") {
+    w = w + delta;
+  }
+  if (h === "bl") {
+    x = x + delta;
+    w = w - delta;
+  }
+  if (h === "br") {
+    w = w + delta;
+  }
+  if (w < 0.03) w = 0.03;
+  if (x < 0) {
+    w += x;
+    x = 0;
+  }
+  if (x + w > 1) {
+    w = 1 - x;
+  }
+  const canvasW = pdfCanvas.width,
+    canvasH = pdfCanvas.height;
+  const ratioFactor =
+    (signaturePlacement.ratio || signatureImageRatio || 0.35) *
+    (canvasW / canvasH);
+  let hNorm = w * ratioFactor;
+  if (y + hNorm > 1) {
+    hNorm = 1 - y;
+    w = hNorm / ratioFactor;
+  }
+  signaturePlacement.x = x;
+  signaturePlacement.w = w;
+  signaturePlacement.h = hNorm;
+  signaturePlacement.ratio =
+    signatureImageRatio || signaturePlacement.ratio || 0;
+  signaturePlacementDirty = true;
+  updateSignaturePlacementButtons();
+  renderMarkers();
+}
+function endResizeSignature() {
+  window.removeEventListener("mousemove", resizeSignatureMove);
+  resizingSignature = null;
+  scheduleAutoSaveSignaturePlacement();
+}
+// Prefijos eliminados: mostramos sólo el valor de muestra
+
+// Botón de guardar mapeo eliminado (autoguardado)
+
+function clearSelectionEl() {
+  if (selectionEl) {
+    selectionEl.remove();
+    selectionEl = null;
+  }
+}
+pdfCanvas.addEventListener("mousedown", (e) => {
+  if (e.target !== pdfCanvas) return;
+  // Colocación firma
+  if (signatureData && signaturePlacementMode) {
+    const rect = pdfCanvas.getBoundingClientRect();
+    let x = (e.clientX - rect.left) / rect.width;
+    let y = (e.clientY - rect.top) / rect.height;
+    const canvasW = pdfCanvas.width,
+      canvasH = pdfCanvas.height;
+    let wNorm = 0.25;
+    if (x + wNorm > 1) wNorm = Math.max(0.05, 1 - x);
+    const ratioFactor = (signatureImageRatio || 0.35) * (canvasW / canvasH);
+    let hNorm = wNorm * ratioFactor;
+    if (y + hNorm > 1) {
+      y = Math.max(0, 1 - hNorm);
+    }
+    signaturePlacement = {
+      page: 1,
+      x: Math.min(Math.max(x, 0), 1 - wNorm),
+      y: Math.min(Math.max(y, 0), 1 - hNorm),
+      w: wNorm,
+      h: hNorm,
+      ratio: signatureImageRatio || 0,
+    };
+    signaturePlacementMode = false;
+    signaturePlacementDirty = true;
+    updateSignaturePlacementButtons();
+    renderMarkers();
+    scheduleAutoSaveSignaturePlacement();
+    return;
+  }
+  // Colocación de elemento fijo si está seleccionado
+  if (typeof fixedSelection === "string" && fixedPlacementMode) {
+    const rect = pdfCanvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    const el = fixedElements.find((f) => f.id === fixedSelection);
+    if (el) {
+      el.page = 1;
+      el.x = applySnapX(x, 0);
+      el.y = applySnapPoint(y, el.fontSize);
+      delete el.w;
+      delete el.h;
+      fixedPlacementMode = false;
+      renderMarkers();
+      scheduleAutoSaveFixed();
+    }
+    return;
+  }
+  if (!fieldSelect.value) return;
+  const rect = pdfCanvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  dragState = {
+    field: fieldSelect.value,
+    startX: x,
+    startY: y,
+    curX: x,
+    curY: y,
+  };
+  clearSelectionEl();
+  selectionEl = document.createElement("div");
+  selectionEl.className =
+    "absolute border border-dashed border-sky-600 bg-sky-500/10 pointer-events-none";
+  document.getElementById("pdf-preview").appendChild(selectionEl);
+});
+window.addEventListener("mousemove", (e) => {
+  if (!dragState) return;
+  const rect = pdfCanvas.getBoundingClientRect();
+  const x = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+  const y = Math.min(Math.max((e.clientY - rect.top) / rect.height, 0), 1);
+  dragState.curX = x;
+  dragState.curY = y;
+  const sx = Math.min(dragState.startX, dragState.curX);
+  const sy = Math.min(dragState.startY, dragState.curY);
+  const ex = Math.max(dragState.startX, dragState.curX);
+  const ey = Math.max(dragState.startY, dragState.curY);
+  const w = pdfCanvas.width;
+  const h = pdfCanvas.height;
+  if (selectionEl) {
+    selectionEl.style.left = sx * w + "px";
+    selectionEl.style.top = sy * h + "px";
+    selectionEl.style.width = (ex - sx) * w + "px";
+    selectionEl.style.height = (ey - sy) * h + "px";
+  }
+});
+window.addEventListener("mouseup", (e) => {
+  if (!dragState) return;
+  const { field, startX, startY, curX, curY } = dragState;
+  dragState = null;
+  const dx = Math.abs(curX - startX);
+  const dy = Math.abs(curY - startY);
+  const threshold = 0.003; // ~0.3% del tamaño -> considerar click simple
+  if (dx < threshold && dy < threshold) {
+    // Punto (snap baseline texto ejemplo)
+    const tmpFont = consentFieldMap[field]?.fontSize || globalFontDefault;
+    consentFieldMap[field] = {
+      page: 1,
+      x: applySnapX(startX, 0),
+      y: applySnapPoint(startY, tmpFont),
+      fontSize: tmpFont,
+    };
+  } else {
+    const sx = Math.min(startX, curX);
+    const sy = Math.min(startY, curY);
+    const ex = Math.max(startX, curX);
+    const ey = Math.max(startY, curY);
+    const hh = ey - sy;
+    const ww = ex - sx;
+    const tmpFontR = consentFieldMap[field]?.fontSize || globalFontDefault;
+    consentFieldMap[field] = {
+      page: 1,
+      x: applySnapX(sx, ww),
+      y: applySnap(sy, hh),
+      w: ww,
+      h: hh,
+      fontSize: tmpFontR,
+    };
+  }
+  clearSelectionEl();
+  rebuildFieldList();
+  scheduleAutoSaveMap();
+});
+// Fuente global
+const globalFontSelect = document.getElementById("global-font-size");
+const applyGlobalBtn = document.getElementById("btn-apply-global-font");
+applyGlobalBtn?.addEventListener("click", () => {
+  const size = parseInt(globalFontSelect.value, 10) || 12;
+  Object.values(consentFieldMap).forEach((v) => {
+    v.fontSize = size;
+  });
+  globalFontDefault = size;
+  rebuildFieldList();
+});
+// Tabs con estado visual activo
+// Tabs + indicador animado
+const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
+const indicator = document.getElementById("tab-indicator");
+function positionIndicator(active) {
+  if (!indicator || !active) return;
+  // Asegurar layout estable
+  const parent = active.parentElement;
+  if (!parent) return;
+  const rect = active.offsetWidth
+    ? { width: active.offsetWidth, left: active.offsetLeft }
+    : active.getBoundingClientRect();
+  const width = rect.width;
+  const left = active.offsetLeft;
+  indicator.style.width = width + "px";
+  indicator.style.transform = `translateX(${left}px)`;
+  indicator.classList.remove("opacity-0");
+}
+function activateTab(btn) {
+  const tab = btn.dataset.tab;
+  tabBtns.forEach((b) => {
+    b.classList.remove("font-medium", "text-slate-900");
+    b.classList.add("text-slate-600");
+  });
+  btn.classList.add("font-medium", "text-slate-900");
+  btn.classList.remove("text-slate-600");
+  document
+    .getElementById("tab-variables")
+    .classList.toggle("hidden", tab !== "variables");
+  document
+    .getElementById("tab-fijos")
+    .classList.toggle("hidden", tab !== "fijos");
+  const firmaTab = document.getElementById("tab-firma");
+  if (firmaTab) firmaTab.classList.toggle("hidden", tab !== "firma");
+  positionIndicator(btn);
+  // Persistir última pestaña
+  try {
+    localStorage.setItem("consent_active_tab", tab);
+  } catch (_e) {}
+}
+tabBtns.forEach((b) => b.addEventListener("click", () => activateTab(b)));
+// Init tab (persistencia)
+const storedTab = (() => {
+  try {
+    return localStorage.getItem("consent_active_tab");
+  } catch (_e) {
+    return null;
+  }
+})();
+const initBtn = tabBtns.find((b) => b.dataset.tab === storedTab) || tabBtns[0];
+activateTab(initBtn);
+// Reposicionar indicador tras layout final
+requestAnimationFrame(() => positionIndicator(initBtn));
+window.addEventListener("load", () =>
+  positionIndicator(tabBtns.find((b) => b.classList.contains("font-medium")))
+);
+window.addEventListener("resize", () =>
+  positionIndicator(tabBtns.find((b) => b.classList.contains("font-medium")))
+);
+// Intentos adicionales para asegurar que la barra aparezca aunque cambie el layout (fuentes / scrollbars)
+function ensureIndicator() {
+  const active =
+    tabBtns.find((b) => b.classList.contains("font-medium")) || initBtn;
+  positionIndicator(active);
+  if (indicator && indicator.classList.contains("opacity-0")) {
+    indicator.classList.remove("opacity-0");
+  }
+}
+// Varias pasadas escalonadas
+requestAnimationFrame(() => {
+  ensureIndicator();
+  requestAnimationFrame(() => ensureIndicator());
+});
+setTimeout(ensureIndicator, 60);
+setTimeout(ensureIndicator, 180);
+setTimeout(ensureIndicator, 400);
+// Simular un click «virtual» en la pestaña activa para reproducir el comportamiento manual que hacía aparecer la barra
+setTimeout(() => {
+  try {
+    initBtn.dispatchEvent(new Event("click"));
+  } catch (_e) {}
+}, 20);
+// Editor de fijos
+const showFixedEditorBtn = document.getElementById("btn-show-fixed-editor");
+const fixedEditor = document.getElementById("fixed-editor");
+const addFixedBtn = document.getElementById("btn-add-fixed");
+const cancelFixedBtn = document.getElementById("btn-cancel-fixed");
+const fixedTextInput = document.getElementById("fixed-text");
+const fixedFontSelect = document.getElementById("fixed-font");
+const fixedStatus = document.getElementById("fixed-status");
+showFixedEditorBtn?.addEventListener("click", () => {
+  fixedEditor.classList.toggle("hidden");
+  if (!fixedEditor.classList.contains("hidden")) {
+    fixedPlacementMode = false;
+    editingFixedId = null;
+    fixedSelection = null;
+    rebuildFixedList();
+  }
+});
+cancelFixedBtn?.addEventListener("click", () => {
+  fixedEditor.classList.add("hidden");
+  if (fixedTextInput) fixedTextInput.value = "";
+});
+addFixedBtn?.addEventListener("click", () => {
+  const txt = (fixedTextInput?.value || "").trim();
+  if (!txt) return;
+  const font = parseInt(fixedFontSelect.value, 10) || 12;
+  if (editingFixedId) {
+    const el = fixedElements.find((f) => f.id === editingFixedId);
+    if (el) {
+      el.text = txt;
+      el.fontSize = font;
+    }
+    editingFixedId = null;
+    addFixedBtn.textContent = "Guardar";
+    fixedEditor.classList.add("hidden");
+    fixedSelection = null;
+    fixedPlacementMode = false;
+  } else {
+    const id =
+      "f_" +
+      Date.now().toString(36) +
+      "_" +
+      Math.random().toString(36).slice(2, 6);
+    fixedElements.push({ id, text: txt, fontSize: font });
+    fixedSelection = id;
+    fixedPlacementMode = true;
+    fixedEditor.classList.add("hidden");
+  }
+  if (fixedTextInput) fixedTextInput.value = "";
+  rebuildFixedList();
+  renderMarkers();
+});
+// Botón guardar fijos eliminado (autoguardado)
+// Inicializar lista vacía al cargar
+rebuildFixedList();
+function startEditFixed(id) {
+  const el = fixedElements.find((f) => f.id === id);
+  if (!el) return;
+  editingFixedId = id;
+  fixedPlacementMode = false;
+  fixedSelection = id;
+  if (fixedTextInput) fixedTextInput.value = el.text;
+  if (fixedFontSelect) fixedFontSelect.value = el.fontSize;
+  addFixedBtn.textContent = "Actualizar";
+  fixedEditor.classList.remove("hidden");
+  rebuildFixedList();
+}
+const guidesToggle = document.getElementById("toggle-guides");
+guidesToggle?.addEventListener("change", () => {
+  showGuides = guidesToggle.checked;
+  renderMarkers();
+});
+
+function applySnap(yNorm, hNorm) {
+  if (!showGuides) return yNorm;
+  const candidates = [...snapGuidesY, ...snapUnderlineY];
+  if (!candidates.length) return yNorm;
+  const thresholdPx = 6;
+  const canvasH = pdfCanvas.height;
+  const thresholdNorm = thresholdPx / canvasH;
+  let best = null,
+    bestDist = Infinity;
+  for (const gy of candidates) {
+    const dTop = Math.abs(yNorm - gy);
+    if (dTop < bestDist) {
+      bestDist = dTop;
+      best = gy;
+    }
+    if (hNorm > 0) {
+      const center = yNorm + hNorm / 2;
+      const dCenter = Math.abs(center - gy);
+      if (dCenter < bestDist) {
+        bestDist = dCenter;
+        best = gy - hNorm / 2;
+      }
+    }
+  }
+  if (bestDist <= thresholdNorm) {
+    return Math.min(Math.max(best, 0), 1 - hNorm);
+  }
+  return yNorm;
+}
+
+function applySnapPoint(yNorm, fontSize) {
+  if (!showGuides) return yNorm;
+  const candidates = [...snapGuidesY, ...snapUnderlineY];
+  if (!candidates.length) return yNorm;
+  const thresholdPx = 6;
+  const cssH =
+    parseFloat(pdfCanvas.style.height) || pdfPageViewport?.height || 1;
+  const baselineOffsetNorm = (fontSize * 0.78) / cssH;
+  const thresholdNorm = thresholdPx / (pdfCanvas.height || cssH || 1);
+  let bestTop = null,
+    bestDist = Infinity;
+  for (const gy of candidates) {
+    const currentBaseline = yNorm + baselineOffsetNorm;
+    const dist = Math.abs(currentBaseline - gy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestTop = gy - baselineOffsetNorm;
+    }
+  }
+  if (bestDist <= thresholdNorm) {
+    return Math.min(Math.max(bestTop, 0), 1);
+  }
+  return yNorm;
+}
+
+function applySnapX(xNorm, wNorm) {
+  if (!showGuides) return xNorm;
+  if (!snapGuidesX.length) return xNorm;
+  const thresholdPx = 6;
+  const canvasW = pdfCanvas.width;
+  const thresholdNorm = thresholdPx / canvasW;
+  let best = null,
+    bestDist = Infinity;
+  for (const gx of snapGuidesX) {
+    const dLeft = Math.abs(xNorm - gx);
+    if (dLeft < bestDist) {
+      bestDist = dLeft;
+      best = gx;
+    }
+    if (wNorm > 0) {
+      const right = xNorm + wNorm;
+      const dRight = Math.abs(right - gx);
+      if (dRight < bestDist) {
+        bestDist = dRight;
+        best = gx - wNorm;
+      }
+      const center = xNorm + wNorm / 2;
+      const dCenter = Math.abs(center - gx);
+      if (dCenter < bestDist) {
+        bestDist = dCenter;
+        best = gx - wNorm / 2;
+      }
+    }
+  }
+  if (bestDist <= thresholdNorm) {
+    return Math.min(Math.max(best, 0), 1 - wNorm);
+  }
+  return xNorm;
+}
+
+async function extractSnapGuides(page, viewport) {
+  snapGuidesY = [];
+  snapUnderlineY = [];
+  snapGuidesX = [];
+  try {
+    const text = await page.getTextContent();
+    const ys = [];
+    const underscores = [];
+    const xs = [];
+    const scale = viewport.scale || 1;
+    for (const item of text.items) {
+      const tr = item.transform;
+      if (!tr) continue;
+      const y = tr[5] * scale;
+      const x = tr[4] * scale;
+      const canvasY = viewport.height - y;
+      const yNorm = canvasY / viewport.height;
+      ys.push(yNorm);
+      if (/^_+$/.test(item.str || "")) underscores.push(yNorm);
+      const xNorm = x / viewport.width;
+      xs.push(xNorm);
+    }
+    function cluster(values) {
+      values.sort((a, b) => a - b);
+      const out = [];
+      const eps = 3 / viewport.height;
+      let acc = [];
+      for (const v of values) {
+        if (!acc.length || Math.abs(v - acc[acc.length - 1]) <= eps) {
+          acc.push(v);
+        } else {
+          out.push(acc.reduce((s, n) => s + n, 0) / acc.length);
+          acc = [v];
+        }
+      }
+      if (acc.length) out.push(acc.reduce((s, n) => s + n, 0) / acc.length);
+      return out;
+    }
+    snapGuidesY = cluster(ys);
+    snapUnderlineY = cluster(underscores);
+    // cluster X usando ancho
+    function clusterX(values) {
+      values.sort((a, b) => a - b);
+      const out = [];
+      const eps = 3 / viewport.width;
+      let acc = [];
+      for (const v of values) {
+        if (!acc.length || Math.abs(v - acc[acc.length - 1]) <= eps) {
+          acc.push(v);
+        } else {
+          out.push(acc.reduce((s, n) => s + n, 0) / acc.length);
+          acc = [v];
+        }
+      }
+      if (acc.length) out.push(acc.reduce((s, n) => s + n, 0) / acc.length);
+      return out;
+    }
+    snapGuidesX = clusterX(xs);
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+async function loadPdf(force = false) {
+  if (pdfLoaded && !force) return;
+  try {
+    // Carga resiliente de pdf.js: intenta varias CDN/versiones si la primera falla (404)
+    async function ensurePdfJs() {
+      if (window.pdfjsLib) return;
+      // Usamos una versión estable 3.x disponible en cdnjs (la 4.x aún no está allí y daba 404)
+      const ver = "3.11.174";
+      const candidates = [
+        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${ver}/pdf.min.js`,
+        // Fallbacks en jsDelivr/unpkg por si cdnjs falla
+        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${ver}/build/pdf.min.js`,
+        `https://unpkg.com/pdfjs-dist@${ver}/build/pdf.min.js`,
+      ];
+      for (const url of candidates) {
+        try {
+          // Suprime advertencia de Vite sobre import dinámico de URL variable
+          await import(/* @vite-ignore */ url);
+          if (window.pdfjsLib) {
+            // Configurar worker (mismo ver / origen prioritario: cdnjs); si falla, jsDelivr
+            const workerCandidates = [
+              `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${ver}/pdf.worker.min.js`,
+              `https://cdn.jsdelivr.net/npm/pdfjs-dist@${ver}/build/pdf.worker.min.js`,
+              `https://unpkg.com/pdfjs-dist@${ver}/build/pdf.worker.min.js`,
+            ];
+            for (const wu of workerCandidates) {
+              // No probamos descarga previa; pdf.js intentará cargarlo. Elegimos el primero.
+              window.pdfjsLib.GlobalWorkerOptions.workerSrc = wu;
+              break;
+            }
+            return;
+          }
+        } catch (e) {
+          /* probar siguiente */
+        }
+      }
+      throw new Error("No se pudo cargar pdf.js desde las CDN configuradas");
+    }
+    await ensurePdfJs();
+    // Descargar PDF protegido usando authFetch para incluir Authorization
+    const resp = await authFetch(apiBase + "/data/settings/consent-pdf");
+    if (!resp.ok) throw new Error("fetch_pdf_" + resp.status);
+    const blob = await resp.blob();
+    const arrayBuf = await blob.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuf }).promise;
+    const page = await pdf.getPage(1);
+    pdfLoaded = true;
+    // Guardar página para re-render dinámico
+    window.__consentPdfPage = page;
+    renderPdfToFitWidth();
+  } catch (e) {
+    console.warn("[pdf][load] fallo cargando preview:", e.message);
+  }
+}
+
+function renderPdfToFitWidth() {
+  const page = window.__consentPdfPage;
+  if (!page) return;
+  const container = document.getElementById("pdf-preview");
+  if (!container) return;
+  const baseViewport = page.getViewport({ scale: 1 });
+  const targetWidth = container.clientWidth || baseViewport.width;
+  // Evitar pequeños cambios (scrollbar aparición, etc.) que desplazan posiciones
+  if (
+    lastPdfContainerWidth !== null &&
+    Math.abs(targetWidth - lastPdfContainerWidth) < 4
+  ) {
+    return; // no re-render para cambios mínimos
+  }
+  const scale = targetWidth / baseViewport.width;
+  const viewport = page.getViewport({ scale });
+  const ctx = pdfCanvas.getContext("2d");
+  // Mejor calidad en pantallas retina
+  const ratio = window.devicePixelRatio || 1;
+  pdfCanvas.width = viewport.width * ratio;
+  pdfCanvas.height = viewport.height * ratio;
+  pdfCanvas.style.width = viewport.width + "px";
+  pdfCanvas.style.height = viewport.height + "px";
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  page.render({ canvasContext: ctx, viewport }).promise.then(() => {
+    pdfPageViewport = viewport;
+    extractSnapGuides(page, viewport).then(() => {
+      if (showGuides) renderMarkers();
+      else renderMarkers();
+    });
+  });
+  lastPdfContainerWidth = targetWidth;
+}
+window.addEventListener("resize", () => {
+  if (pdfLoaded) renderPdfToFitWidth();
+});
+
+// Visualizar / descargar en nueva pestaña de forma autenticada
+pdfDownload.addEventListener("click", async (e) => {
+  e.preventDefault();
+  pdfDownload.textContent = "Cargando...";
+  try {
+    const r = await authFetch(apiBase + "/data/settings/consent-pdf");
+    if (!r.ok) throw new Error("fail_" + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60 * 1000);
+  } catch (err) {
+    pdfDownload.textContent = "Error al abrir";
+    setTimeout(() => {
+      pdfDownload.textContent = "Ver PDF";
+    }, 2000);
+  } finally {
+    if (pdfDownload.textContent.startsWith("Cargando"))
+      pdfDownload.textContent = "Ver PDF";
+  }
+});
+
+consentChk.addEventListener("change", toggleConsentConfig);
+
+saveBtn.addEventListener("click", saveSettings);
+loadSettings();
