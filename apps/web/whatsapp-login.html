@@ -40,7 +40,18 @@
 							<div id="qrWrap" class="aspect-square w-60 mx-auto flex items-center justify-center border border-dashed border-slate-300 rounded bg-slate-50">
 								<span class="text-slate-400 text-xs">Esperando QR…</span>
 							</div>
-							<button id="resetBtn" class="mt-4 w-full rounded-md bg-slate-800 text-white py-2 text-sm font-medium hover:bg-slate-700" type="button">Reiniciar sesión</button>
+							
+							<!-- Contador y botón regenerar QR -->
+							</div>
+							<button id="regenerateQrBtn" class="mt-2 text-sm text-blue-600 hover:text-blue-800 hover:underline hidden" type="button">
+								Generar QR de nuevo
+							</button>
+							
+							<div class="mt-4 space-y-2">
+								<button id="resetBtn" class="w-full rounded-md bg-slate-800 text-white py-2 text-sm font-medium hover:bg-slate-700" type="button">Reconectar</button>
+								<button id="deleteSessionBtn" class="w-full rounded-md bg-red-600 text-white py-2 text-sm font-medium hover:bg-red-700" type="button">Eliminar sesión y generar nuevo QR</button>
+							</div>
+							
 							<p class="mt-4 text-[11px] text-slate-400 leading-relaxed">Escanea el código desde WhatsApp: Dispositivos vinculados &gt; Vincular dispositivo. Al conectarse serás dirigido a la página de Mensajes.</p>
 						</div>
 					</section>

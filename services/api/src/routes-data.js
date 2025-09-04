@@ -288,13 +288,11 @@ r.post("/events", async (req, res) => {
         .catch((err) => console.error("[google][create] fallo", err.message));
     }
   });
-  res
-    .status(201)
-    .json({
-      ok: true,
-      item: row,
-      client_completion: clientNeedsCompletion ? { needed: true } : null,
-    });
+  res.status(201).json({
+    ok: true,
+    item: row,
+    client_completion: clientNeedsCompletion ? { needed: true } : null,
+  });
 });
 
 // Obtener (o generar) enlace de completar datos para un cliente concreto
@@ -588,22 +586,18 @@ r.get("/integrations/google/calendars", async (req, res) => {
   } catch (e) {
     const code = e.status || 400;
     if (e.message === "insufficient_scope") {
-      return res
-        .status(400)
-        .json({
-          error: "insufficient_scope",
-          detail:
-            "El token no incluye permisos para listar calendarios. Reautoriza añadiendo calendar.readonly.",
-          status: code,
-        });
-    }
-    res
-      .status(400)
-      .json({
-        error: "calendar_list_failed",
-        detail: e.body?.slice?.(0, 300) || e.message,
+      return res.status(400).json({
+        error: "insufficient_scope",
+        detail:
+          "El token no incluye permisos para listar calendarios. Reautoriza añadiendo calendar.readonly.",
         status: code,
       });
+    }
+    res.status(400).json({
+      error: "calendar_list_failed",
+      detail: e.body?.slice?.(0, 300) || e.message,
+      status: code,
+    });
   }
 });
 
@@ -753,6 +747,34 @@ r.post("/whatsapp/reset", async (req, res) => {
   try {
     await ensureWhatsappServiceSpawn();
     const r2 = await fetch(WHATSAPP_SERVICE_BASE + "/whatsapp/reset", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + req.accessToken },
+    });
+    const j = await r2.json().catch(() => ({}));
+    res.status(r2.status).json(j);
+  } catch (e) {
+    res.status(502).json({ error: "whatsapp_service_unreachable" });
+  }
+});
+
+r.post("/whatsapp/delete-session", async (req, res) => {
+  try {
+    await ensureWhatsappServiceSpawn();
+    const r2 = await fetch(WHATSAPP_SERVICE_BASE + "/whatsapp/delete-session", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + req.accessToken },
+    });
+    const j = await r2.json().catch(() => ({}));
+    res.status(r2.status).json(j);
+  } catch (e) {
+    res.status(502).json({ error: "whatsapp_service_unreachable" });
+  }
+});
+
+r.post("/whatsapp/force-qr", async (req, res) => {
+  try {
+    await ensureWhatsappServiceSpawn();
+    const r2 = await fetch(WHATSAPP_SERVICE_BASE + "/whatsapp/force-qr", {
       method: "POST",
       headers: { Authorization: "Bearer " + req.accessToken },
     });

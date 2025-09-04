@@ -103,6 +103,9 @@ async function getOrCreateSession(userId) {
     isFullyReady: false,
     lastError: null,
     createdAt: new Date(),
+    firstQrAt: null, // Cuando se generó el primer QR
+    qrPaused: false, // Si la generación de QR está pausada
+    qrExpired: false, // Si el QR ha expirado (60s)
   };
   sessions.set(userId, session);
 
@@ -137,9 +140,42 @@ async function getOrCreateSession(userId) {
 
   // Event listeners
   client.on("qr", async (qr) => {
-    console.log(
-      `[WhatsApp] QR generado para ${userId} (${new Date().toISOString()})`
-    );
+    const now = new Date();
+
+    // Si es el primer QR, marcar el tiempo de inicio
+    if (!session.firstQrAt) {
+      session.firstQrAt = now;
+      session.qrPaused = false;
+      session.qrExpired = false;
+      console.log(
+        `[WhatsApp] Primer QR generado para ${userId} (${now.toISOString()})`
+      );
+    } else {
+      // Verificar si han pasado 60 segundos desde el primer QR
+      const timeSinceFirst = now.getTime() - session.firstQrAt.getTime();
+      if (timeSinceFirst > 60000) {
+        // 60 segundos
+        if (!session.qrExpired) {
+          console.log(
+            `[WhatsApp] QR expirado para ${userId} después de 60s - pausando generación`
+          );
+          session.qrExpired = true;
+          session.qrPaused = true;
+        }
+        // No actualizar el QR si está pausado
+        if (session.qrPaused) {
+          console.log(
+            `[WhatsApp] QR pausado para ${userId} - ignorando nuevo QR`
+          );
+          return;
+        }
+      } else {
+        console.log(
+          `[WhatsApp] QR actualizado para ${userId} (${now.toISOString()})`
+        );
+      }
+    }
+
     session.status = "QR";
     try {
       session.qrCode = await QRCode.toDataURL(qr);
@@ -270,8 +306,16 @@ app.get("/whatsapp/status", authMiddleware, async (req, res) => {
     response.lastError = session.lastError;
   }
 
-  if (session.status === "QR" && session.qrCode) {
-    response.qr = session.qrCode;
+  // Manejar estado QR con lógica de expiración
+  if (session.status === "QR") {
+    if (session.qrExpired && session.qrPaused) {
+      // QR expirado, devolver estado especial sin QR
+      response.status = "QR_EXPIRED";
+      response.message = "QR expirado, genere uno nuevo";
+    } else if (session.qrCode) {
+      // QR activo, devolverlo normalmente
+      response.qr = session.qrCode;
+    }
   }
 
   if (session.client) {
@@ -345,6 +389,17 @@ app.post("/whatsapp/reset", authMiddleware, async (req, res) => {
     const { id } = req.user;
     console.log(`[WhatsApp] Reiniciando sesión para usuario ${id}`);
 
+    // Resetear estado de timing de QR si existe sesión
+    if (sessions.has(id)) {
+      const session = sessions.get(id);
+      session.firstQrAt = null;
+      session.qrPaused = false;
+      session.qrExpired = false;
+      console.log(
+        `[WhatsApp] Estado de timing QR reseteado para usuario ${id}`
+      );
+    }
+
     // Destruir sesión existente de forma segura
     await destroySession(id, "manual_reset");
 
@@ -363,6 +418,58 @@ app.post("/whatsapp/reset", authMiddleware, async (req, res) => {
   }
 });
 
+// Eliminar sesión completamente (incluyendo datos de BD y generar nuevo QR)
+app.post("/whatsapp/delete-session", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.user;
+    console.log(`[WhatsApp] Eliminando sesión completa para usuario ${id}`);
+
+    // Resetear estado de timing de QR si existe sesión
+    if (sessions.has(id)) {
+      const session = sessions.get(id);
+      session.firstQrAt = null;
+      session.qrPaused = false;
+      session.qrExpired = false;
+      console.log(
+        `[WhatsApp] Estado de timing QR reseteado para usuario ${id}`
+      );
+    }
+
+    // Destruir sesión actual
+    await destroySession(id, "delete_session");
+
+    // Eliminar datos de sesión de la base de datos
+    try {
+      const deleteResult = await pgPool.query(
+        "DELETE FROM whatsapp_remote_sessions WHERE session_id = $1",
+        [`whatsapp-RemoteAuth-user_${id}`]
+      );
+      console.log(
+        `[WhatsApp] Datos de BD eliminados para usuario ${id}: ${deleteResult.rowCount} filas afectadas`
+      );
+    } catch (dbError) {
+      console.warn(
+        `[WhatsApp] Error eliminando datos de BD para ${id}: ${dbError.message}`
+      );
+      // No fallar si no se pueden eliminar datos de BD
+    }
+
+    // Crear nueva sesión limpia
+    const newSession = await getOrCreateSession(id);
+    res.json({
+      status: newSession.status,
+      message: "Sesión eliminada y recreada correctamente",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`[WhatsApp] Error eliminando sesión: ${error.message}`);
+    res.status(500).json({
+      error: "Error eliminando sesión",
+      details: error.message,
+    });
+  }
+});
+
 // Enviar mensaje
 app.post("/whatsapp/send", authMiddleware, async (req, res) => {
   try {
@@ -376,12 +483,10 @@ app.post("/whatsapp/send", authMiddleware, async (req, res) => {
       !session ||
       (session.status !== "READY" && session.status !== "AUTHENTICATED")
     ) {
-      return res
-        .status(400)
-        .json({
-          error: "Sesión no lista",
-          currentStatus: session?.status || "NO_SESSION",
-        });
+      return res.status(400).json({
+        error: "Sesión no lista",
+        currentStatus: session?.status || "NO_SESSION",
+      });
     }
     if (!session.client) {
       return res
@@ -553,6 +658,17 @@ app.post("/whatsapp/force-qr", authMiddleware, async (req, res) => {
     const { id } = req.user;
     console.log(`[WhatsApp] Forzando regeneración de QR para usuario ${id}`);
 
+    // Resetear estado de timing de QR si existe sesión
+    if (sessions.has(id)) {
+      const session = sessions.get(id);
+      session.firstQrAt = null;
+      session.qrPaused = false;
+      session.qrExpired = false;
+      console.log(
+        `[WhatsApp] Estado de timing QR reseteado para usuario ${id}`
+      );
+    }
+
     // Destruir sesión existente de forma segura
     await destroySession(id, "force_qr");
 
@@ -567,6 +683,86 @@ app.post("/whatsapp/force-qr", authMiddleware, async (req, res) => {
     console.error(`[WhatsApp] Error forzando QR: ${error.message}`);
     res.status(500).json({
       error: "Error forzando regeneración de QR",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para obtener el estado de todas las sesiones activas (solo desarrollo/admin)
+app.get("/whatsapp/sessions-status", authMiddleware, async (req, res) => {
+  try {
+    const sessionsInfo = [];
+
+    for (const [userId, session] of sessions.entries()) {
+      const sessionInfo = {
+        userId,
+        status: session.status,
+        isFullyReady: session.isFullyReady || false,
+        createdAt: session.createdAt,
+        hasQR: !!session.qrCode,
+      };
+
+      // Añadir último error si existe
+      if (session.lastError && session.status === "ERROR") {
+        sessionInfo.lastError = session.lastError;
+      }
+
+      // Intentar obtener información del cliente si está disponible
+      if (session.client) {
+        try {
+          const state = await session.client.getState();
+          sessionInfo.internalState = state;
+        } catch (error) {
+          sessionInfo.internalState = "ERROR";
+          sessionInfo.internalStateError = error.message;
+        }
+      }
+
+      sessionsInfo.push(sessionInfo);
+    }
+
+    res.json({
+      totalSessions: sessions.size,
+      sessions: sessionsInfo,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(
+      `[WhatsApp] Error obteniendo estado de sesiones: ${error.message}`
+    );
+    res.status(500).json({
+      error: "Error obteniendo estado de sesiones",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para reinicializar todas las sesiones de usuarios activos (solo admin/desarrollo)
+app.post("/whatsapp/initialize-all", authMiddleware, async (req, res) => {
+  try {
+    console.log(
+      `[WhatsApp] Reinicialización manual de todas las sesiones solicitada por ${req.user.id}`
+    );
+
+    // Inicializar todas las sesiones de forma asíncrona
+    initializeAllUserSessions().catch((error) => {
+      console.error(
+        "[WhatsApp] Error en inicialización manual:",
+        error.message
+      );
+    });
+
+    res.json({
+      success: true,
+      message: "Inicialización de todas las sesiones iniciada",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(
+      `[WhatsApp] Error en inicialización manual: ${error.message}`
+    );
+    res.status(500).json({
+      error: "Error iniciando reinicialización de sesiones",
       details: error.message,
     });
   }
@@ -626,7 +822,70 @@ app.use((req, res) => {
   res.status(404).json({ error: "Ruta no encontrada" });
 });
 
+// Función para inicializar sesiones de WhatsApp de todos los usuarios activos
+async function initializeAllUserSessions() {
+  console.log(
+    "[WhatsApp] Inicializando sesiones de todos los usuarios activos..."
+  );
+
+  try {
+    // Consultar todos los usuarios activos de la base de datos
+    const result = await pgPool.query(
+      "SELECT id FROM users WHERE active_account = true ORDER BY last_login_at DESC NULLS LAST"
+    );
+
+    if (result.rows.length === 0) {
+      console.log("[WhatsApp] No hay usuarios activos para inicializar");
+      return;
+    }
+
+    console.log(
+      `[WhatsApp] Encontrados ${result.rows.length} usuarios activos`
+    );
+
+    // Inicializar sesiones con un delay entre cada una para evitar sobrecarga
+    for (let i = 0; i < result.rows.length; i++) {
+      const user = result.rows[i];
+      console.log(
+        `[WhatsApp] Inicializando sesión para usuario ${user.id} (${i + 1}/${
+          result.rows.length
+        })`
+      );
+
+      try {
+        // Crear sesión sin esperar a que termine completamente
+        getOrCreateSession(user.id).catch((error) => {
+          console.warn(
+            `[WhatsApp] Error inicializando sesión para ${user.id}: ${error.message}`
+          );
+        });
+
+        // Pequeño delay entre inicializaciones para evitar saturar el sistema
+        if (i < result.rows.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000)); // 2 segundos entre cada inicialización
+        }
+      } catch (error) {
+        console.warn(
+          `[WhatsApp] Error creando sesión para usuario ${user.id}: ${error.message}`
+        );
+      }
+    }
+
+    console.log("[WhatsApp] ✅ Inicialización de sesiones completada");
+  } catch (error) {
+    console.error(
+      "[WhatsApp] Error inicializando sesiones de usuarios:",
+      error.message
+    );
+  }
+}
+
 const PORT = process.env.PORT || 4001;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`[WhatsApp] Servicio ejecutándose en puerto ${PORT}`);
+
+  // Inicializar sesiones después de un breve delay para asegurar que el servidor esté completamente iniciado
+  setTimeout(() => {
+    initializeAllUserSessions();
+  }, 3000); // 3 segundos de delay
 });

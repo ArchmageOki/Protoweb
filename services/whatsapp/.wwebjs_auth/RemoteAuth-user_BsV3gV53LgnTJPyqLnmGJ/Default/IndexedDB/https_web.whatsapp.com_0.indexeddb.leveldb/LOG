@@ -1,14 +1,26 @@
-2025/09/03-13:04:55.536 64a8 Creating DB D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_BsV3gV53LgnTJPyqLnmGJ\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
-2025/09/03-13:04:55.538 64a8 Reusing MANIFEST D:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_BsV3gV53LgnTJPyqLnmGJ\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
-2025/09/03-13:04:55.807 5fe8 Manual compaction at level-0 from '\x00\x03\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x04\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.808 5fe8 Manual compaction at level-0 from '\x00\x04\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x05\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.809 223c Manual compaction at level-0 from '\x00\x05\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x06\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.809 223c Manual compaction at level-0 from '\x00\x06\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x07\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.810 223c Manual compaction at level-0 from '\x00\x07\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x08\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.810 223c Manual compaction at level-0 from '\x00\x08\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x09\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.811 223c Manual compaction at level-0 from '\x00\x09\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0a\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.812 672c Manual compaction at level-0 from '\x00\x0d\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0e\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.812 672c Manual compaction at level-0 from '\x00\x0b\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0c\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.813 672c Manual compaction at level-0 from '\x00\x0c\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.814 5fe8 Manual compaction at level-0 from '\x00\x0a\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at (end)
-2025/09/03-13:04:55.836 6a20 Manual compaction at level-0 from '\x00\x11\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x12\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.147 8acc Creating DB d:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_BsV3gV53LgnTJPyqLnmGJ\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
+2025/09/04-18:27:50.150 8acc Reusing MANIFEST d:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_BsV3gV53LgnTJPyqLnmGJ\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/09/04-18:27:50.398 2fd4 Manual compaction at level-0 from '\x00\x03\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x04\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.400 3654 Manual compaction at level-0 from '\x00\x04\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x05\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.401 2fd4 Manual compaction at level-0 from '\x00\x05\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x06\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.404 2fd4 Manual compaction at level-0 from '\x00\x06\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x07\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.407 3654 Manual compaction at level-0 from '\x00\x07\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x08\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.407 3654 Manual compaction at level-0 from '\x00\x08\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x09\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.408 3654 Manual compaction at level-0 from '\x00\x09\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0a\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.408 3654 Manual compaction at level-0 from '\x00\x0d\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0e\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.409 3654 Manual compaction at level-0 from '\x00\x0b\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0c\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.410 3654 Manual compaction at level-0 from '\x00\x0c\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.411 3654 Level-0 table #5: started
+2025/09/04-18:27:50.413 3654 Level-0 table #5: 26457 bytes OK
+2025/09/04-18:27:50.414 3654 Delete type=0 #3
+2025/09/04-18:27:50.414 3654 Manual compaction at level-0 from '\x00\x0a\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:50.435 3654 Level-0 table #7: started
+2025/09/04-18:27:50.437 3654 Level-0 table #7: 6118 bytes OK
+2025/09/04-18:27:50.437 3654 Delete type=0 #4
+2025/09/04-18:27:50.438 3654 Manual compaction at level-0 from '\x00\x11\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x12\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/04-18:27:52.719 11cc Compacting 1@1 + 1@2 files
+2025/09/04-18:27:52.722 11cc Generated table #8@1: 495 keys, 14272 bytes
+2025/09/04-18:27:52.722 11cc Compacted 1@1 + 1@2 files => 14272 bytes
+2025/09/04-18:27:52.723 11cc compacted to: files[ 0 0 1 0 0 0 0 ]
+2025/09/04-18:27:52.723 11cc Delete type=2 #5
+2025/09/04-18:27:52.723 11cc Delete type=2 #7

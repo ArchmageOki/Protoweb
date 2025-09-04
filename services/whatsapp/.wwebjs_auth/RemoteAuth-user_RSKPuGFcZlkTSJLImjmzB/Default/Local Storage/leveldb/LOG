@@ -1,2 +1,6 @@
-2025/09/04-17:00:08.888 32c4 Creating DB d:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_RSKPuGFcZlkTSJLImjmzB\Default\Local Storage\leveldb since it was missing.
-2025/09/04-17:00:08.891 32c4 Reusing MANIFEST d:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_RSKPuGFcZlkTSJLImjmzB\Default\Local Storage\leveldb/MANIFEST-000001
+2025/09/04-18:18:57.815 3150 Reusing MANIFEST d:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_RSKPuGFcZlkTSJLImjmzB\Default\Local Storage\leveldb/MANIFEST-000001
+2025/09/04-18:18:57.825 3150 Recovering log #3
+2025/09/04-18:18:57.825 3150 Reusing old log d:\Documentos\Proyectos de VSCode\Protoweb\services\whatsapp\.wwebjs_auth\RemoteAuth-user_RSKPuGFcZlkTSJLImjmzB\Default\Local Storage\leveldb/000003.log 
+2025/09/04-18:19:58.053 1888 Level-0 table #5: started
+2025/09/04-18:19:58.055 1888 Level-0 table #5: 19216 bytes OK
+2025/09/04-18:19:58.056 1888 Delete type=0 #3
